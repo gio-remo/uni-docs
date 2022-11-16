@@ -1,0 +1,22 @@
+% Crea Pagina Vuota
+\def\paginaVuota{
+	\clearpage
+	\null
+	\thispagestyle{empty}
+	\clearpage
+}
+
+% Crea Indice
+\def\indice{
+	\pagestyle{plain}
+	\pagenumbering{roman}
+	\setcounter{page}{3}
+	\tableofcontents
+}
+
+\newcommand\vertarrow[3][4ex]{%
+  \begin{array}[t]{@{}c@{}} #2 \\
+  \left\uparrow\vcenter{\hrule height #1}\right.\kern-\nulldelimiterspace\\
+  \makebox[0pt]{\scriptsize#3}
+  \end{array}%
+}

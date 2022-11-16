@@ -1,0 +1,56 @@
+\documentclass[a4paper, 12pt, oneside]{book}
+\usepackage{stile-tesi}
+
+\usepackage[english, italian]{babel} % Hyphenation support
+\usepackage[utf8]{inputenc} % Unicode UTF-8 encoding support
+%\usepackage[a-1b]{pdfx}
+
+\usepackage{setspace}
+\onehalfspacing % 1.5 interline
+\setlength{\parskip}{0pt}
+
+\usepackage{graphicx} % Images
+\usepackage[margin=3cm]{geometry}
+\usepackage{float}
+
+\usepackage{chngcntr}
+\counterwithout{figure}{chapter}
+\counterwithout{equation}{chapter}
+\counterwithout{table}{chapter}
+
+\usepackage{amsmath}
+
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{multirow}
+
+\usepackage{caption}
+\newcommand{\source}[1]{\vspace{-8pt}\caption*{Fonte: {#1}} }
+
+\usepackage[autostyle,italian=guillemets]{csquotes}
+\usepackage[style=authoryear,backend=biber,maxcitenames=1]{biblatex} % [style=authoryear] oppure [bibstyle=authoryear,citestyle=numeric]
+\addbibresource{bibliografia.bib}
+
+\usepackage{url}
+\setcounter{biburllcpenalty}{8000}
+\setcounter{biburlucpenalty}{9000}		
+\usepackage[hidelinks]{hyperref}
+
+\begin{document}
+
+\include{1-frontespizio}
+\include{2-dedica}
+
+\indice
+
+\include{3-ch1}
+\include{4-ch2}
+\include{5-ch3}
+
+% Entries to include even if not cited
+\nocite{ECB:ea_m2_2022}
+\nocite{ISTAT:pesi_paniere_2002}
+
+\printbibliography[heading=bibintoc]
+
+\end{document}
