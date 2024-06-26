@@ -1,0 +1,42 @@
+\chapter{Extension}
+\label{sec:extension}
+
+Let's now delve into some possible extensions or improvements that can be done to the work of \textcite{Larch2017}.
+
+\section{Enhanced Trade Costs Estimates}
+
+As described in Section \ref{sec:theorethical}, since trade costs $T_l^{ij}$ are not directly observable, to measure the trade flows $X_l^{ij}$ between each pair of countries, \textcite{Larch2017} approximate and estimate them using a vector of seven variables. Among others, they include the distance between the two countries or the presence of Bilateral Trade Agreements, and their coefficients (excerpt in Table \ref{tab:tradeFlowEst}) appears to be statistically significant and with a large average Pseudo-$R^2$ of $0.86$.
+
+However, I believe that also another key factor can determine the trade costs between two countries: currency. More precisely, whether both countries officially adopt the same currency nationally. For example, some minor costs could arise from exchanging and storing different currencies or being subject to the volatility of the rates. This hypothesis is further supported by \textcite{Anderson2003}, where they find out that the barriers arising from using different currencies may account up to 14\% of all trade costs. Similarly, analyzing the case of the European Economic and Monetary Union (EMU), \textcite{Andrew2001} highlight the huge positive impact that a common currency can have on reducing trade barriers.
+
+Therefore, using the data of the International Standard ISO 4217, which regulates currency codes worldwide, we can create a dummy variables taking values as follow:
+\begin{flalign}
+&z^{ij}=
+\begin{cases}
+1\quad &\textrm{if }currency^i=currency^j\\
+0\quad &\textrm{otherwise}
+\end{cases}
+&
+\end{flalign}
+where, the variable takes value 1 if both countries adopt the same currency. Now, we can include it in the vector $\boldsymbol{z}_l^{ij}$ of regressors (see Equation \ref{eq:estimate}), and run again the regression for the PPML estimator to estimate the updated measure for trade flows, hopefully now with an even higher $R^2$.
+
+\section{Reinforced Low-Carbon Consumer Preferences}
+
+In Equation \ref{eq:CESutility} (b), \textcite{Larch2017} include in the total utility of the representative consumer a damage factor that reduces utility based on the social cost of carbon $\mu^j$ and the total emissions $E^i$ produced by all other countries, i.e $(\frac{1}{\mu^j}\sum_{i=1}^{N}E^i)^2$.
+
+As it is modeled, pollution is treated as a pure externality and does not directly enter into consumer choice. Nowadays, I believe that consumers actively choose ex-ante a low-carbon consumption bundle, and not only do they suffer the pollution ex-post. This behavior is fostered also by the presence of carbon labels on the products (as highlighted by \textcite{Vanclay2011}), or information regarding the place or production methodology (e.g. bio vs conventional agriculture, recycled vs virgin paper, recycled vs virgin rare earth elements). The two elements work in the same direction and, to my mind, this extension provides an additional micro-foundation to the model.
+
+The new underlying mechanism is as follows: 1) the consumer gains a greater utility from consuming low-carbon goods, 2) therefore, thanks to elasticity in consumption, the expenditure in low-carbon sectors increases and falls in the others, 3) since the balance trade assumption applies, i.e. $Y^j=\mathfrak{X}^j$, everything produced is consumed, a higher share of low-carbon goods is produced, 4) ultimately, the production-share-weighted average energy cost term $\bar{\alpha}^i_E$ is smaller in Equation \ref{eq:emissions}, thus reducing emissions $E^i$. To obtain a closer approximation of this consumption behavior and mechanism, I propose an extension of the utility function previously illustrated in Equation \ref{eq:CESutility} (a).
+\begin{flalign}\label{eq:utilityextended}
+&U_l^j= \left[\sum_{i=1}^{N}(\beta_l^i)^{\frac{1-\sigma_l}{\sigma_l}}\left(\frac{q_l^{ij}}{\boldsymbol{1+\delta_l^jI_l^{ij}}}\right)^{\frac{\sigma_l-1}{\sigma_l}} \right]^{\frac{\sigma_l}{\sigma_l-1}}
+&
+\end{flalign}
+In Equation \ref{eq:utilityextended} is illustrated the extended utility function. The new parameters are: 1) $\delta_l^j$, which captures the preference for low-carbon intensive goods in sector $l$ and country $j$, 2) $I_l^{ij}$, the carbon intensity of goods from sector $l$ produced in country $i$ and consumed in country $j$.
+
+$\delta_l^j$ serves as a weight: a more environmentalist consumer gives more importance (and weight) to the carbon intensity of the goods she consumes and therefore will have a higher $\delta_l^j$ and, depending on $I_l^{ij}$, a larger denominator, and a lower $U_l^i$. Conversely, an egoist consumer does not value at all carbon intensity, and her $\delta_l^j$ is 0.
+
+$I_l^{ij}$ accounts for the emissions emitted during the production of a unit of a good in country $i$, and is defined as follows: $I_l^{ij}=E_l^i/q_l^i$. Here, when the representative consumer buys a good with a low carbon intensity $I_l^{ij}$, the denominator is smaller, and the utility $U_l^i$ is larger.
+
+In the context of the decomposition analysis of \textcite{Larch2017}, I expect this extension to further increase the composition effect, i.e. $\frac{\delta E^i}{\delta \bar{a}^i_E}$. This effect was already the main driver of emission reductions and now, as consumers have even more incentives to switch to low-carbon consumption, it will increase the share of low-carbon output and, ultimately, reduce emissions. 
+
+In conclusion, besides fulfilling the main role of providing additional micro-foundation, I believe this extension can also correct the often underestimated social cost of carbon. Indeed, a too low estimate of the SCC cannot capture the real damage suffered by the consumer due to pollution and diminishes the attractiveness of a low-carbon consumption bundle. The American Interagency Working Group on the Social Cost of Carbon is the main and most famous research team evaluating such a measure. For instance, \textcite{Larch2017} use a social cost of carbon $\mu^j$ of 29 US-\$ for 2007, in line with \textcite{Nordhaus2017} which uses a SCC of 31 US-\$ for 2010 with a discount rate of 3\%. However, in 2021, while the \textcite{SCC2021} estimated a SCC of 51 US-\$ for 2020, in 2022, \textcite{Rennert2022} estimated a mean SCC of 185 US-\$ per ton of CO2. Still, in 2023, \textcite{SCC2023} found a SCC of 120 US-\$  for 2020 at a $2.5\%$ discount rate. It is clear that the social cost of carbon is constantly evolving, as are the techniques to measure it. Hopefully, this micro-founded extension, together with the disutility factor, can extensively account for the negative impact of carbon emissions.
