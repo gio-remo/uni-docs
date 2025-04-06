@@ -1,7 +1,7 @@
 dataset = "reanalysis-era5-land-monthly-means"
 request = {
     "product_type": ["monthly_averaged_reanalysis"],
-    "variable": ["2m_temperature"],
+    "variable": ["total_precipitation"],
     "year": [
         "2000", "2001", "2002",
         "2003", "2004", "2005",
@@ -18,6 +18,6 @@ request = {
         "10", "11", "12"
     ],
     "time": ["00:00"],
-    "data_format": "grib",
+    "data_format": "netcdf",
     "download_format": "unarchived"
 }
