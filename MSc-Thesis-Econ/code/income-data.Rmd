@@ -1,0 +1,146 @@
+---
+title: "Code"
+output: github_document
+---
+
+# Income Data, cell-level
+
+## Kummu (2018) - Gridded global datasets for Gross Domestic Product and Human Development Index over 1990-2015
+
+Source: https://doi.org/10.5061/dryad.dk1j0
+
+Also Peri (2019) uses cell-level data for income to split observations into 4 income groups (poor, mid-poor, mid-rich, rich). However, two drawbacks:
+
+- low frequency, 10 years intervals between 1980 and 2100
+- low resolution, 0.5° (= 30 arc-min, https://www.inchcalculator.com/convert/degree-to-arcminute/)
+
+Kummu (2018) has built a finer global gridded dataset for HDI, GPD, and GDP per capita, at PPP and USD2011, with:
+
+- higher frequency, yearly over 1990-2015
+- higher resolution, 0.083° (= 5 arc-min, 6 times more detailed)
+
+Goal: distribute cells based on their GPD per capita into 4 percentiles (25th, 50th, 75th). To do so:
+
+1) Long-run income average for all cells, 2000-2015
+2) Assign percentiles
+
+Making income percentile at cell-level and not using coutry-level data (eg. from World Bank) allows me to keep taking advantage of the fine spatial resolution, capturing within-country variation.
+
+Handling NetCDF files in R:
+- https://rdrr.io/cran/ncdf4/man/
+- https://pjbartlein.github.io/REarthSysSci/netCDF.html
+
+```{r}
+library(ncdf4)
+
+filepath_GDP_per_capita_PPP_1990_2015_v2 <- "../data/GDP_per_capita_PPP_1990_2015_v2.nc"
+GDP_per_capita_PPP_1990_2015_v2 <- nc_open(filepath_GDP_per_capita_PPP_1990_2015_v2)
+```
+
+```{r}
+# Extract variables of interest
+lat <- ncvar_get(GDP_per_capita_PPP_1990_2015_v2, "latitude") # x2160
+lon <- ncvar_get(GDP_per_capita_PPP_1990_2015_v2, "longitude") # x4320
+years_all <- ncvar_get(GDP_per_capita_PPP_1990_2015_v2, "time") # 1990-2015
+years <- years_all[11:26] # Subset years 2000-2015
+
+gdp <- ncvar_get(
+  GDP_per_capita_PPP_1990_2015_v2, 
+  "GDP_per_capita_PPP", 
+  start = c(1, 1, 11), # Start from beginning of lon and lat, and year 11
+  count = c(-1, -1, 16) # Read all lon, all lat, and 16 years (2000–2015)
+) # Size: 2160 lat * 4320 lon * 16 years = 149.299.200 observations
+
+# From 3D array to 1D vector
+gdp_vec <- as.vector(gdp)
+
+# Build coordinate grid (lon, lat, time)
+grid <- expand.grid(
+  lon = lon,
+  lat = lat,
+  year = years
+)
+
+# Combine into a dataframe
+gdp_df_full <- data.frame(
+  lon = grid$lon,
+  lat = grid$lat,
+  year = grid$year,
+  gdp = gdp_vec
+)
+
+# Remove missing values
+gdp_df <- gdp_df_full[!is.na(gdp_df_full$gdp), ] # From 149ml obs, to 36ml obs
+```
+
+Now that we have imported the dataset, let's make the average of the cell GPD over 2000-2015.
+
+```{r}
+library(dplyr)
+
+# Average GDP 2000-2015
+gdp_avg <- gdp_df %>%
+  group_by(lon, lat) %>%
+  summarise(mean_gdp = mean(gdp, na.rm = TRUE))
+
+# Now the size is 2,3ml observations.
+# Check: 2160*4320, net of NA values of oceans/lakes, global land surface is 29%
+```
+
+Let's see the distribution of the average GDP per capita. Only few outliers (70k observations) at avg_gdp > $125k.
+
+```{r}
+library(ggplot2)
+
+# Quartiles
+p <- quantile(gdp_avg$mean_gdp, probs = c(0.25, 0.5, 0.75))
+
+# Histogram
+ggplot(gdp_avg, aes(mean_gdp)) +
+  geom_histogram() +
+  geom_vline(xintercept = p[1], color="red") +
+  geom_vline(xintercept = p[2], color="red") +
+  geom_vline(xintercept = p[3], color="red") +
+  annotate("text", x = p[1], y = 10000, label = "25th", vjust = -2, color = "red") +
+  annotate("text", x = p[2], y = 10000, label = "50th", vjust = -2, color = "red") +
+  annotate("text", x = p[3], y = 10000, label = "75th", vjust = -2, color = "red") +
+  scale_x_continuous(labels = scales::label_comma(), breaks = seq(0, 125000, by=25000))
+```
+
+Let's split observations in quartiles. In this way, we can later group Net-Migration and Climate data in GDP clusters.
+
+```{r}
+# Cut into quartiles
+gdp_avg$gdp_quartile <- cut(
+  gdp_avg$mean_gdp,
+  breaks = c(-Inf, p, Inf),
+  labels = c("Q1", "Q2", "Q3", "Q4"),
+  include.lowest = TRUE
+)
+```
+
+Let's plot average GDP per capita.
+
+```{r}
+ggplot(gdp_avg, aes(x=lon, y=lat, fill=mean_gdp)) +
+  geom_tile() +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "GDP per capita", limits = c(0,125000), oob = scales::squish, breaks = seq(0, 125000, length.out=10))
+
+#ggsave("test.png", units = "px", width = 2000, height = 1500)
+```
+
+Let's plot quartiles on the map.
+
+```{r}
+ggplot(gdp_avg, aes(x=lon, y=lat, fill=gdp_quartile)) +
+  geom_tile() +
+  coord_fixed()
+```
+
+Let's export our final dataset in csv.
+
+```{r}
+write.csv(gdp_avg, "../data/income-gdp-quarter.csv", row.names = FALSE)
+```
+

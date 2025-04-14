@@ -1,0 +1,81 @@
+---
+title: "Code"
+output: github_document
+---
+
+# Migration Data
+
+Code References:
+- (Context) Spatial Data Science: With Applications in R: https://doi.org/10.1201/9780429459016
+- (Code) R as GIS for Economists: https://tmieno2.github.io/R-as-GIS-for-Economists-Quarto/
+
+```{r}
+library(terra)
+library(ggplot2)
+
+# Reading file, cumulative sum Net-Migration 2000-2019
+filepath_raster_netMgr_2000_2019_20yrSum <- "../data/raster_netMgr_2000_2019_20yrSum.tif"
+raster_netMgr_2000_2019_20yrSum <- rast(filepath_raster_netMgr_2000_2019_20yrSum)
+
+raster_netMgr_2000_2019_20yrSum
+```
+
+```{r}
+global(raster_netMgr_2000_2019_20yrSum, fun=c("min", "max", "mean", "std", "isNA", "notNA"), na.rm=TRUE)
+```
+
+
+
+```{r}
+# Convert to data.frame
+df_raster_netMgr_2000_2019_20yrSum <- as.data.frame(raster_netMgr_2000_2019_20yrSum, xy = TRUE, )
+
+# Plot
+ggplot(data = df_raster_netMgr_2000_2019_20yrSum)
+```
+
+
+
+
+Replication of Table 1 from Peri (2019): Summary Statistics of the Data for Grid Cell Level
+
+
+
+```{r}
+# Reading file
+filepath_raster_netMgr_2000_2019_annual <- "../data/raster_netMgr_2000_2019_annual.tif"
+raster_raster_netMgr_2000_2019_annual <- rast(filepath_raster_netMgr_2000_2019_annual)
+```
+
+Let's see what's inside:
+- It's a SpatRaster object
+- 2160x4320 cells, and 20 layers
+- Coordinate Reference System: WGS 84
+
+```{r}
+raster_raster_netMgr_2000_2019_annual
+```
+
+Summary Statistics for the whole dataset
+
+```{r}
+s <- global(raster_raster_netMgr_2000_2019_annual, fun = c("min", "max", "mean", "std", "notNA", "isNA"), na.rm = TRUE)
+```
+
+```{r}
+library(ggplot2)
+
+t <- values(raster_raster_netMgr_2000_2019_annual)
+
+"""
+ggplot(s, mapping = aes(x=rownames(s), y=mean, group = 1)) +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept = 0, color = 'red')
+"""
+
+ggplot(s, mapping = aes(x=rownames(s), y=mean)) +
+  geom_boxplot()
+
+```
+
