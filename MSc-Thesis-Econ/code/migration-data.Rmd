@@ -134,21 +134,6 @@ It's time to merge Income and Net-Migration data.
 
 2. Both datasets have the same resolution: 0.83° / 5 arc-min https://www.inchcalculator.com/convert/degree-to-arcminute/
 
-```{r}
-# Net-Migration dataset uses WGS 84 (EPSG:4326) 
-raster_netMgr_2000_2019_annual
-```
-
-```{r}
-library(ncdf4)
-
-filepath_GDP_per_capita_PPP_1990_2015_v2 <- "../data/GDP_per_capita_PPP_1990_2015_v2.nc"
-GDP_per_capita_PPP_1990_2015_v2 <- nc_open(filepath_GDP_per_capita_PPP_1990_2015_v2)
-
-# Income dataset also uses WGS84
-GDP_per_capita_PPP_1990_2015_v2
-```
-
 Let's plot them together.
 
 ```{r}
@@ -228,18 +213,36 @@ ggplot() +
   )
 ```
 
-Spatial join (https://tmieno2.github.io/R-as-GIS-for-Economists-Quarto/chapters/03-SpatialInteractionVectorVector.html#spatial-join-with-sfst_join)
+Spatial join with FNN library: https://rdrr.io/cran/FNN/man/get.knn.html
 
 ```{r}
-library(sf)
+# Fast Nearest Neighbor
+library(FNN)
 
-# Convert both dataframes to sf objects
-sf_gdp <- st_as_sf(gdp, coords = c("lon", "lat"), crs = 4326)
-sf_netmgr <- st_as_sf(df_netMgr_2000_2019_annual_long, coords = c("lon", "lat"), crs = 4326)
+# Extract coordinates
+netmgr_coords <- as.matrix(df_netMgr_2000_2019_annual_long[, c("lon", "lat")])
+gdp_coords <- as.matrix(gdp[, c("lon", "lat")])
 
-# Match nearest income point to each netmgr point
-nearest_id <- st_nearest_feature(sf_netmgr, sf_gdp)
+# Find nearest neighbor indices
+nn_idx <- get.knnx(gdp_coords, netmgr_coords, k = 1)$nn.index[, 1]
 
-# Extract matched quartiles
-df_netMgr_2000_2019_annual_long$gdp_quartile <- gdp$gdp_quartile[nearest_id]
+# Assign quartiles
+df_netMgr_2000_2019_annual_long$gdp_quartile <- gdp$gdp_quartile[nn_idx]
 ```
+
+
+```{r}
+# Subset the area of interest
+netmgr_subset1 <- filter_continent(df_netMgr_2000_2019_annual_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
+
+p5 <- ggplot() +
+  geom_tile(data = gdp_subset, aes(x = lon, y = lat, fill = gdp_quartile)) +
+  coord_fixed()
+
+p6 <- ggplot() +
+  geom_tile(data = netmgr_subset1, aes(x = lon, y = lat, fill = gdp_quartile)) +
+  coord_fixed()
+
+p5 + p6 + plot_layout(ncol = 1)
+```
+
