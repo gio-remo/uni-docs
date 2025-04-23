@@ -35,6 +35,8 @@ library(ncdf4)
 
 filepath_GDP_per_capita_PPP_1990_2015_v2 <- "../data/GDP_per_capita_PPP_1990_2015_v2.nc"
 GDP_per_capita_PPP_1990_2015_v2 <- nc_open(filepath_GDP_per_capita_PPP_1990_2015_v2)
+
+GDP_per_capita_PPP_1990_2015_v2
 ```
 
 ```{r}
@@ -73,7 +75,7 @@ gdp_df_full <- data.frame(
 gdp_df <- gdp_df_full[!is.na(gdp_df_full$gdp), ] # From 149ml obs, to 36ml obs
 ```
 
-Now that we have imported the dataset, let's make the average of the cell GPD over 2000-2015.
+Now that we have imported the dataset, let's make the average of each cell GPD over 2000-2015.
 
 ```{r}
 library(dplyr)

@@ -3,79 +3,243 @@ title: "Code"
 output: github_document
 ---
 
-# Migration Data
+# Net-Migration Data, cell level
+
+## Niva (2023) - World’s human migration patterns in 2000–2019 unveiled by high-resolution data
+
+Source: https://doi.org/10.1038/s41562-023-01689-4
 
 Code References:
 - (Context) Spatial Data Science: With Applications in R: https://doi.org/10.1201/9780429459016
 - (Code) R as GIS for Economists: https://tmieno2.github.io/R-as-GIS-for-Economists-Quarto/
 
+Let's import the dataset produced by Niva (2023):
+- Data: https://zenodo.org/records/7997134
+- Gridded global Net-Migration (per 1000 people)
+- Yearly 2000-2019 (20 years)
+- High-resolution, 5 arc-min / 0.083° https://www.inchcalculator.com/convert/degree-to-arcminute/
+
 ```{r}
 library(terra)
+library(tidyr)
 library(ggplot2)
+library(dplyr)
 
-# Reading file, cumulative sum Net-Migration 2000-2019
-filepath_raster_netMgr_2000_2019_20yrSum <- "../data/raster_netMgr_2000_2019_20yrSum.tif"
-raster_netMgr_2000_2019_20yrSum <- rast(filepath_raster_netMgr_2000_2019_20yrSum)
-
-raster_netMgr_2000_2019_20yrSum
-```
-
-```{r}
-global(raster_netMgr_2000_2019_20yrSum, fun=c("min", "max", "mean", "std", "isNA", "notNA"), na.rm=TRUE)
-```
-
-
-
-```{r}
-# Convert to data.frame
-df_raster_netMgr_2000_2019_20yrSum <- as.data.frame(raster_netMgr_2000_2019_20yrSum, xy = TRUE, )
-
-# Plot
-ggplot(data = df_raster_netMgr_2000_2019_20yrSum)
-```
-
-
-
-
-Replication of Table 1 from Peri (2019): Summary Statistics of the Data for Grid Cell Level
-
-
-
-```{r}
-# Reading file
+# Import Net-Migration data, 2000-2019 yearly (20 layers)
 filepath_raster_netMgr_2000_2019_annual <- "../data/raster_netMgr_2000_2019_annual.tif"
-raster_raster_netMgr_2000_2019_annual <- rast(filepath_raster_netMgr_2000_2019_annual)
-```
+raster_netMgr_2000_2019_annual <- rast(filepath_raster_netMgr_2000_2019_annual)
 
-Let's see what's inside:
-- It's a SpatRaster object
-- 2160x4320 cells, and 20 layers
-- Coordinate Reference System: WGS 84
-
-```{r}
-raster_raster_netMgr_2000_2019_annual
-```
-
-Summary Statistics for the whole dataset
-
-```{r}
-s <- global(raster_raster_netMgr_2000_2019_annual, fun = c("min", "max", "mean", "std", "notNA", "isNA"), na.rm = TRUE)
+raster_netMgr_2000_2019_annual # 2160 * 4320 * 20 years
 ```
 
 ```{r}
-library(ggplot2)
+# Convert to df
+df_netMgr_2000_2019_annual <- as.data.frame(raster_netMgr_2000_2019_annual, xy = TRUE) # 2.259.320 obs for 20 years
 
-t <- values(raster_raster_netMgr_2000_2019_annual)
+# From wide (22 columns) to long
+df_netMgr_2000_2019_annual_long <- pivot_longer(df_netMgr_2000_2019_annual, -c(x, y), names_to = "layer", values_to = "value") # 45.186.400 obs
+colnames(df_netMgr_2000_2019_annual_long) <- c("lon", "lat", "year", "netmgr")
 
-"""
-ggplot(s, mapping = aes(x=rownames(s), y=mean, group = 1)) +
-  geom_point() +
-  geom_line() +
-  geom_hline(yintercept = 0, color = 'red')
-"""
-
-ggplot(s, mapping = aes(x=rownames(s), y=mean)) +
-  geom_boxplot()
-
+summary(df_netMgr_2000_2019_annual_long$netmgr)
 ```
 
+Remove missing values.
+
+```{r}
+# Remove NAs
+df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[!is.na(df_netMgr_2000_2019_annual_long$netmgr),]
+```
+
+
+Many cells (6,7 mln) have value 0. This would imply that natural birth and death rate perfectly match. Leaving these 0 in the dataset alters the analysis, and as a perfect match of the demographic rates seems rather a rare residual case.
+
+I've decided to remove the observations with value 0. Here I plot these observations, they mostly cover Greenland.
+
+```{r}
+# Zeros
+df_zeros <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr == 0,] # Length 6,7mln observations
+
+avg_zeros <- df_zeros %>%
+  group_by(lon, lat) %>%
+  summarise(m = mean(netmgr, na.rm = TRUE))
+
+ggplot() +
+  geom_tile(data = avg_zeros, aes(lon, lat), fill = "red") +
+  coord_fixed()
+```
+
+
+Therefore, let's remove observations with 0.
+
+```{r}
+# Remove 0s
+df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr != 0,] # From 45mln to 38 mln observation
+
+summary(df_netMgr_2000_2019_annual_long$netmgr)
+```
+
+
+Let's proceed cleaning our dataset, it's time for outliers. I remove outliers at 0.01 and 0.99 percentiles.
+
+```{r}
+p <- quantile(df_netMgr_2000_2019_annual_long$netmgr, probs = c(0.01, 0.99))
+
+# Filter out outliers (1st, 99th percentile)
+df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[
+  df_netMgr_2000_2019_annual_long$netmgr >= p[1] &
+  df_netMgr_2000_2019_annual_long$netmgr <= p[2], ] # From 38mln to 37mln
+
+summary(df_netMgr_2000_2019_annual_long$netmgr)
+```
+
+
+Our Net-Migration dataset is ready. Let's plot the distribution.
+
+Most observations have values very close to 0. For instance, a value of 0.02, considering values are the ratio between net migration and 1,000 people, means that for every 1,000 residents, there was a net gain of only 0.02 people, equivalent to just 2 individuals per 100,000 people. Instead, a value of 1 means that for every 1,000 residents, there was a net gain of 1 person.
+
+These are RATIOs. In a region with a population of 100,000:
+- A value of 0.2 would imply a net migration of 20 people (0.2/1000 * 100k)
+- A value of 1 would imply a net migration of 100 people (1/1000 * 100k)
+
+```{r}
+pp <- quantile(df_netMgr_2000_2019_annual_long$netmgr, probs = c(0.25, 0.5, 0.75))
+
+ggplot(data = df_netMgr_2000_2019_annual_long, aes(netmgr)) +
+  geom_histogram(binwidth = 0.01) +
+  xlim(-3.5, 2.5) +
+    geom_vline(xintercept = pp[1], color="red", alpha=0.5, linetype="dotted") +
+  geom_vline(xintercept = pp[2], color="red", alpha=0.5, linetype="dotted") +
+  geom_vline(xintercept = pp[3], color="red", alpha=0.5, linetype="dotted") +
+  annotate("text", x = pp[1], y = 10000, label = "25th", vjust = -2, color = "red") +
+  annotate("text", x = pp[2], y = 10000, label = "50th", vjust = -2, color = "red") +
+  annotate("text", x = pp[3], y = 10000, label = "75th", vjust = -2, color = "red")
+```
+
+
+Single observations (cell, year) with POSITIVE Net-Migration = 18,1 mln
+
+```{r}
+df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr > 0, ]
+```
+
+Single observations (cell, year) with NEGATIVE Net-Migration = 19,5 mln
+
+```{r}
+df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr < 0, ]
+```
+
+It's time to merge Income and Net-Migration data.
+
+1. Both datasets use the same coordinate/projection system: EPSG:4326 (WGS84) https://epsg.io/4326. This is reassuring, as allows us to spatially merge the features of the two datasets without having to resample.
+
+2. Both datasets have the same resolution: 0.83° / 5 arc-min https://www.inchcalculator.com/convert/degree-to-arcminute/
+
+```{r}
+# Net-Migration dataset uses WGS 84 (EPSG:4326) 
+raster_netMgr_2000_2019_annual
+```
+
+```{r}
+library(ncdf4)
+
+filepath_GDP_per_capita_PPP_1990_2015_v2 <- "../data/GDP_per_capita_PPP_1990_2015_v2.nc"
+GDP_per_capita_PPP_1990_2015_v2 <- nc_open(filepath_GDP_per_capita_PPP_1990_2015_v2)
+
+# Income dataset also uses WGS84
+GDP_per_capita_PPP_1990_2015_v2
+```
+
+Let's plot them together.
+
+```{r}
+# Import clean version of income data
+gdp <- read.csv("../data/income-gdp-quarter.csv")
+
+# Net-Migration data for 1 year, to be able to plot
+netmgr_1y <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$year == 2000,]
+
+library(patchwork)
+
+p1 <- ggplot() +
+  geom_tile(data = gdp, aes(x = lon, y = lat, fill = mean_gdp)) +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "GDP per capita")
+
+
+p2 <- ggplot() + 
+  geom_tile(data = netmgr_1y, aes(x = lon, y = lat, fill = netmgr)) +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "Net-Migr/1000pp")
+
+p1 + p2 + plot_layout(ncol = 1)
+```
+
+```{r}
+# Function to filter
+filter_continent <- function(grid, lon_min, lon_max, lat_min, lat_max) {
+  subset(grid, lon >= lon_min & lon <= lon_max & lat >= lat_min & lat <= lat_max)
+}
+```
+
+Let's overlap them to check whether they're actually using the same grid system!
+
+First, let's subset our global dataset and select a small area, north-east Italy.
+
+```{r}
+# Subset the area of interest
+gdp_subset <- filter_continent(gdp, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
+netmgr_subset <- filter_continent(df_netMgr_2000_2019_annual_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
+
+p3 <- ggplot() +
+  geom_tile(data = gdp_subset, aes(x = lon, y = lat, fill = mean_gdp)) +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "Avg GDP", option = "magma", alpha = 1)
+
+p4 <- ggplot() +
+  geom_tile(data = netmgr_subset, aes(x = lon, y = lat, fill = netmgr)) +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "Net-Migration/1000pp", option = "viridis")
+
+p3 + p4 + plot_layout(ncol = 1)
+```
+
+Let's overlap the grid of the two areas. They perfectly match! We can now merge the variables of the two datasets. 
+
+```{r}
+library(ggnewscale) # Library to have multiple legends/scales
+
+ggplot() +
+  # 1st layer: avg GDP
+  geom_tile(data = gdp_subset, aes(x = lon, y = lat), fill = "white", alpha = 0, color="black", size = 1) +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "Avg GDP", option = "magma") +
+  
+  new_scale_fill() + # New scale layer
+  
+  # 2nd layer: Net-Migration/1000pp
+  geom_tile(data = netmgr_subset, aes(x = lon, y = lat), fill = "white", alpha = 0, color = "red", size = 0.1) +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "Net-Migration/1000pp", option = "viridis") +
+  
+  # Legends position
+  theme(
+    legend.position = "bottom",  # Place both legends below
+    legend.box = "horizontal"
+  )
+```
+
+Spatial join (https://tmieno2.github.io/R-as-GIS-for-Economists-Quarto/chapters/03-SpatialInteractionVectorVector.html#spatial-join-with-sfst_join)
+
+```{r}
+library(sf)
+
+# Convert both dataframes to sf objects
+sf_gdp <- st_as_sf(gdp, coords = c("lon", "lat"), crs = 4326)
+sf_netmgr <- st_as_sf(df_netMgr_2000_2019_annual_long, coords = c("lon", "lat"), crs = 4326)
+
+# Match nearest income point to each netmgr point
+nearest_id <- st_nearest_feature(sf_netmgr, sf_gdp)
+
+# Extract matched quartiles
+df_netMgr_2000_2019_annual_long$gdp_quartile <- gdp$gdp_quartile[nearest_id]
+```
