@@ -228,6 +228,7 @@ nn_idx <- get.knnx(gdp_coords, netmgr_coords, k = 1)$nn.index[, 1]
 
 # Assign quartiles
 df_netMgr_2000_2019_annual_long$gdp_quartile <- gdp$gdp_quartile[nn_idx]
+df_netMgr_2000_2019_annual_long$mean_gdp <- gdp$mean_gdp[nn_idx]
 ```
 
 
@@ -245,4 +246,47 @@ p6 <- ggplot() +
 
 p5 + p6 + plot_layout(ncol = 1)
 ```
+
+Fancy table with gt: https://gt.rstudio.com/index.html
+
+```{r}
+library(gt)
+
+# Summary Statistics
+summary_stats <- function(data, variable) {
+  q <- quantile(data[[deparse(substitute(variable))]], probs = c(0.25, 0.75), na.rm = TRUE)
+  data %>%
+    summarize(
+      Obs. = n(),
+      Mean = mean({{ variable }}, na.rm = TRUE),
+      `St. dev.` = sd({{ variable }}, na.rm = TRUE),
+      `25th` = q[1],
+      `75th` = q[2]
+    )
+}
+
+# Summary for full sample
+summary_migr_full_sample <- summary_stats(df_netMgr_2000_2019_annual_long, netmgr) %>%
+  mutate(Group = "Full sample")
+
+# Summary by GDP group
+summary_migr_by_group <- df_netMgr_2000_2019_annual_long %>%
+  group_by(gdp_quartile) %>%
+  # Apply function to each group
+  group_modify(~summary_stats(.x, netmgr)) %>%
+  rename(Group = gdp_quartile)
+
+# Combine in one table
+summary_table_migr <- bind_rows(summary_migr_full_sample, summary_migr_by_group) %>%
+  select(Group, Obs., Mean, `St. dev.`, `25th`, `75th`)
+
+# Print as a nice table
+gt(summary_table_migr) %>% 
+  fmt_number(columns = "Obs.", use_seps = TRUE, decimals = 0) %>% 
+  fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
+  tab_options(table.width = pct(80)) %>% 
+  tab_header(title = "Net migration rates")
+```
+
+
 

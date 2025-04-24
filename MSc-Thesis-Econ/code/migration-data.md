@@ -379,6 +379,7 @@ nn_idx <- get.knnx(gdp_coords, netmgr_coords, k = 1)$nn.index[, 1]
 
 # Assign quartiles
 df_netMgr_2000_2019_annual_long$gdp_quartile <- gdp$gdp_quartile[nn_idx]
+df_netMgr_2000_2019_annual_long$mean_gdp <- gdp$mean_gdp[nn_idx]
 ```
 
 ``` r
@@ -397,3 +398,494 @@ p5 + p6 + plot_layout(ncol = 1)
 ```
 
 ![](migration-data_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+
+Fancy table with gt: <https://gt.rstudio.com/index.html>
+
+``` r
+library(gt)
+```
+
+    ## Warning: package 'gt' was built under R version 4.4.3
+
+``` r
+# Summary Statistics
+summary_stats <- function(data, variable) {
+  q <- quantile(data[[deparse(substitute(variable))]], probs = c(0.25, 0.75), na.rm = TRUE)
+  data %>%
+    summarize(
+      Obs. = n(),
+      Mean = mean({{ variable }}, na.rm = TRUE),
+      `St. dev.` = sd({{ variable }}, na.rm = TRUE),
+      `25th` = q[1],
+      `75th` = q[2]
+    )
+}
+
+# Summary for full sample
+summary_migr_full_sample <- summary_stats(df_netMgr_2000_2019_annual_long, netmgr) %>%
+  mutate(Group = "Full sample")
+
+# Summary by GDP group
+summary_migr_by_group <- df_netMgr_2000_2019_annual_long %>%
+  group_by(gdp_quartile) %>%
+  # Apply function to each group
+  group_modify(~summary_stats(.x, netmgr)) %>%
+  rename(Group = gdp_quartile)
+
+# Combine in one table
+summary_table_migr <- bind_rows(summary_migr_full_sample, summary_migr_by_group) %>%
+  select(Group, Obs., Mean, `St. dev.`, `25th`, `75th`)
+
+# Print as a nice table
+gt(summary_table_migr) %>% 
+  fmt_number(columns = "Obs.", use_seps = TRUE, decimals = 0) %>% 
+  fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
+  tab_options(table.width = pct(80)) %>% 
+  tab_header(title = "Net migration rates")
+```
+
+<div id="xrogrkftiu" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#xrogrkftiu table {
+  font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+&#10;#xrogrkftiu thead, #xrogrkftiu tbody, #xrogrkftiu tfoot, #xrogrkftiu tr, #xrogrkftiu td, #xrogrkftiu th {
+  border-style: none;
+}
+&#10;#xrogrkftiu p {
+  margin: 0;
+  padding: 0;
+}
+&#10;#xrogrkftiu .gt_table {
+  display: table;
+  border-collapse: collapse;
+  line-height: normal;
+  margin-left: auto;
+  margin-right: auto;
+  color: #333333;
+  font-size: 16px;
+  font-weight: normal;
+  font-style: normal;
+  background-color: #FFFFFF;
+  width: 80%;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #A8A8A8;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #A8A8A8;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_caption {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+&#10;#xrogrkftiu .gt_title {
+  color: #333333;
+  font-size: 125%;
+  font-weight: initial;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-color: #FFFFFF;
+  border-bottom-width: 0;
+}
+&#10;#xrogrkftiu .gt_subtitle {
+  color: #333333;
+  font-size: 85%;
+  font-weight: initial;
+  padding-top: 3px;
+  padding-bottom: 5px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-color: #FFFFFF;
+  border-top-width: 0;
+}
+&#10;#xrogrkftiu .gt_heading {
+  background-color: #FFFFFF;
+  text-align: center;
+  border-bottom-color: #FFFFFF;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_bottom_border {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_col_headings {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_col_heading {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 6px;
+  padding-left: 5px;
+  padding-right: 5px;
+  overflow-x: hidden;
+}
+&#10;#xrogrkftiu .gt_column_spanner_outer {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+&#10;#xrogrkftiu .gt_column_spanner_outer:first-child {
+  padding-left: 0;
+}
+&#10;#xrogrkftiu .gt_column_spanner_outer:last-child {
+  padding-right: 0;
+}
+&#10;#xrogrkftiu .gt_column_spanner {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  overflow-x: hidden;
+  display: inline-block;
+  width: 100%;
+}
+&#10;#xrogrkftiu .gt_spanner_row {
+  border-bottom-style: hidden;
+}
+&#10;#xrogrkftiu .gt_group_heading {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  text-align: left;
+}
+&#10;#xrogrkftiu .gt_empty_group_heading {
+  padding: 0.5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: middle;
+}
+&#10;#xrogrkftiu .gt_from_md > :first-child {
+  margin-top: 0;
+}
+&#10;#xrogrkftiu .gt_from_md > :last-child {
+  margin-bottom: 0;
+}
+&#10;#xrogrkftiu .gt_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  margin: 10px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-top-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  overflow-x: hidden;
+}
+&#10;#xrogrkftiu .gt_stub {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+&#10;#xrogrkftiu .gt_stub_row_group {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 5px;
+  padding-right: 5px;
+  vertical-align: top;
+}
+&#10;#xrogrkftiu .gt_row_group_first td {
+  border-top-width: 2px;
+}
+&#10;#xrogrkftiu .gt_row_group_first th {
+  border-top-width: 2px;
+}
+&#10;#xrogrkftiu .gt_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+&#10;#xrogrkftiu .gt_first_summary_row {
+  border-top-style: solid;
+  border-top-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_first_summary_row.thick {
+  border-top-width: 2px;
+}
+&#10;#xrogrkftiu .gt_last_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_grand_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+&#10;#xrogrkftiu .gt_first_grand_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-style: double;
+  border-top-width: 6px;
+  border-top-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_last_grand_summary_row_top {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-style: double;
+  border-bottom-width: 6px;
+  border-bottom-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_striped {
+  background-color: rgba(128, 128, 128, 0.05);
+}
+&#10;#xrogrkftiu .gt_table_body {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_footnotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_footnote {
+  margin: 0px;
+  font-size: 90%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+&#10;#xrogrkftiu .gt_sourcenotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+&#10;#xrogrkftiu .gt_sourcenote {
+  font-size: 90%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+&#10;#xrogrkftiu .gt_left {
+  text-align: left;
+}
+&#10;#xrogrkftiu .gt_center {
+  text-align: center;
+}
+&#10;#xrogrkftiu .gt_right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+&#10;#xrogrkftiu .gt_font_normal {
+  font-weight: normal;
+}
+&#10;#xrogrkftiu .gt_font_bold {
+  font-weight: bold;
+}
+&#10;#xrogrkftiu .gt_font_italic {
+  font-style: italic;
+}
+&#10;#xrogrkftiu .gt_super {
+  font-size: 65%;
+}
+&#10;#xrogrkftiu .gt_footnote_marks {
+  font-size: 75%;
+  vertical-align: 0.4em;
+  position: initial;
+}
+&#10;#xrogrkftiu .gt_asterisk {
+  font-size: 100%;
+  vertical-align: 0;
+}
+&#10;#xrogrkftiu .gt_indent_1 {
+  text-indent: 5px;
+}
+&#10;#xrogrkftiu .gt_indent_2 {
+  text-indent: 10px;
+}
+&#10;#xrogrkftiu .gt_indent_3 {
+  text-indent: 15px;
+}
+&#10;#xrogrkftiu .gt_indent_4 {
+  text-indent: 20px;
+}
+&#10;#xrogrkftiu .gt_indent_5 {
+  text-indent: 25px;
+}
+&#10;#xrogrkftiu .katex-display {
+  display: inline-flex !important;
+  margin-bottom: 0.75em !important;
+}
+&#10;#xrogrkftiu div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
+  height: 0px !important;
+}
+</style>
+<table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
+  <thead>
+    <tr class="gt_heading">
+      <td colspan="6" class="gt_heading gt_title gt_font_normal gt_bottom_border" style>Net migration rates</td>
+    </tr>
+    &#10;    <tr class="gt_col_headings">
+      <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col" id="Group">Group</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="Obs.">Obs.</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="Mean">Mean</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="St.-dev.">St. dev.</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="a25th">25th</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="a75th">75th</th>
+    </tr>
+  </thead>
+  <tbody class="gt_table_body">
+    <tr><td headers="Group" class="gt_row gt_left">Full sample</td>
+<td headers="Obs." class="gt_row gt_right">37,676,031</td>
+<td headers="Mean" class="gt_row gt_right">−2.19</td>
+<td headers="St. dev." class="gt_row gt_right">158.55</td>
+<td headers="25th" class="gt_row gt_right">−3.02</td>
+<td headers="75th" class="gt_row gt_right">2.38</td></tr>
+    <tr><td headers="Group" class="gt_row gt_left">Q1</td>
+<td headers="Obs." class="gt_row gt_right">10,413,612</td>
+<td headers="Mean" class="gt_row gt_right">−8.71</td>
+<td headers="St. dev." class="gt_row gt_right">230.91</td>
+<td headers="25th" class="gt_row gt_right">−30.07</td>
+<td headers="75th" class="gt_row gt_right">19.71</td></tr>
+    <tr><td headers="Group" class="gt_row gt_left">Q2</td>
+<td headers="Obs." class="gt_row gt_right">10,749,415</td>
+<td headers="Mean" class="gt_row gt_right">−3.45</td>
+<td headers="St. dev." class="gt_row gt_right">160.15</td>
+<td headers="25th" class="gt_row gt_right">−5.65</td>
+<td headers="75th" class="gt_row gt_right">4.30</td></tr>
+    <tr><td headers="Group" class="gt_row gt_left">Q3</td>
+<td headers="Obs." class="gt_row gt_right">8,581,571</td>
+<td headers="Mean" class="gt_row gt_right">2.10</td>
+<td headers="St. dev." class="gt_row gt_right">92.21</td>
+<td headers="25th" class="gt_row gt_right">−0.31</td>
+<td headers="75th" class="gt_row gt_right">0.25</td></tr>
+    <tr><td headers="Group" class="gt_row gt_left">Q4</td>
+<td headers="Obs." class="gt_row gt_right">7,931,433</td>
+<td headers="Mean" class="gt_row gt_right">3.45</td>
+<td headers="St. dev." class="gt_row gt_right">73.04</td>
+<td headers="25th" class="gt_row gt_right">−0.17</td>
+<td headers="75th" class="gt_row gt_right">0.11</td></tr>
+  </tbody>
+  &#10;  
+</table>
+</div>
