@@ -10,10 +10,12 @@ output: github_document
 Source: https://doi.org/10.1038/s41562-023-01689-4
 
 Code References:
+
 - (Context) Spatial Data Science: With Applications in R: https://doi.org/10.1201/9780429459016
 - (Code) R as GIS for Economists: https://tmieno2.github.io/R-as-GIS-for-Economists-Quarto/
 
 Let's import the dataset produced by Niva (2023):
+
 - Data: https://zenodo.org/records/7997134
 - Gridded global Net-Migration (per 1000 people)
 - Yearly 2000-2019 (20 years)
@@ -280,13 +282,12 @@ summary_migr_by_group <- df_netMgr_2000_2019_annual_long %>%
 summary_table_migr <- bind_rows(summary_migr_full_sample, summary_migr_by_group) %>%
   select(Group, Obs., Mean, `St. dev.`, `25th`, `75th`)
 
-# Print as a nice table
+# Print nice table
 gt(summary_table_migr) %>% 
   fmt_number(columns = "Obs.", use_seps = TRUE, decimals = 0) %>% 
   fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
   tab_options(table.width = pct(80)) %>% 
   tab_header(title = "Net migration rates")
 ```
-
 
 
