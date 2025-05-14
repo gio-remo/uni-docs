@@ -7,9 +7,18 @@ Code
 
 Source: <https://doi.org/10.24381/cds.68d2bb30>
 
-For precipitation data, I use the ERA5-Land dataset from Copernicus. It
-provides “total precipitation” at grid cell level, with a resolution of
-0.1°, and a monthly frequency from 2000 to 2019.
+For precipitation data, I use the ERA5-Land dataset from Copernicus.
+
+Definition of “Total Precipitation”: Accumulated liquid and frozen
+water, including rain and snow, that falls to the Earth’s surface. This
+variable is accumulated from the beginning of the forecast time to the
+end of the forecast step (= monthly).
+
+Unit measure: meters.
+
+In addition to the others preparatory steps, I need to compute the
+“cumulated total precipitation” of each year. Making the average over a
+year of the monthly precipitations is not useful to represent the area.
 
 ``` r
 library(ncdf4)
@@ -19,6 +28,12 @@ library(terra)
     ## Warning: package 'terra' was built under R version 4.4.3
 
     ## terra 1.8.29
+
+``` r
+library(ggplot2)
+```
+
+    ## Warning: package 'ggplot2' was built under R version 4.4.3
 
 ``` r
 # 1) Load data
@@ -49,8 +64,8 @@ gc() # free memory
 ```
 
     ##              used    (Mb) gc trigger    (Mb)   max used    (Mb)
-    ## Ncells    1254195    67.0    2160877   115.5    2160877   115.5
-    ## Vcells 1557834974 11885.4 4486614746 34230.2 3113962176 23757.7
+    ## Ncells    1457718    77.9    2686960   143.5    2163378   115.6
+    ## Vcells 1558127304 11887.6 4487035701 34233.4 3114254539 23759.9
 
 ``` r
 # 2) Create rasters and compute year average
@@ -79,8 +94,8 @@ for (j in seq_along(years_unique)) {
     month_rasters[[k]] <- r
   }
 
-  # Compute year mean
-  yearly_raster <- mean(rast(month_rasters), na.rm = TRUE)
+  # Compute YEAR CUMULATIVE SUM
+  yearly_raster <- sum(rast(month_rasters), na.rm = TRUE)
   
   # Name the raster layer with the year
   names(yearly_raster) <- paste0("tp_", yr)
@@ -361,8 +376,8 @@ gc()
 ```
 
     ##           used (Mb) gc trigger    (Mb)   max used    (Mb)
-    ## Ncells 1264961 67.6    2160877   115.5    2160877   115.5
-    ## Vcells 1798936 13.8 3589291797 27384.2 3113962176 23757.7
+    ## Ncells 1465501 78.3    2686960   143.5    2686960   143.5
+    ## Vcells 2084303 16.0 3589628561 27386.7 3114254539 23759.9
 
 ``` r
 # 3) Yearly rasters
@@ -387,27 +402,71 @@ df_avg <- as.data.frame(avg_raster, xy = TRUE)
 df <- merge(df_2000, df_2019, by = c("x", "y"), suffixes = c("_2000", "_2019"))
 df <- merge(df, df_avg, by = c("x", "y"))
 colnames(df) <- c("x", "y", "tp_2000", "tp_2019", "avg_tp")
+df$prec_diff <- df$tp_2019 - df$avg_tp
 df$x <- round(df$x, 1)
 df$y <- round(df$y, 1)
 
 write.csv(df, "total_precipitation_summary.csv", row.names = FALSE)
 ```
 
+Summary Stats for Long Run Total Precipitation
+
+Max = 1,1m/year // Mean = 26cm/year
+
 ``` r
-library(ggplot2)
+# Summary Stats
+
+q1_tp <- quantile(df$avg_tp, 0.25)
+q3_tp <- quantile(df$avg_tp, 0.75)
+avg_tp <- mean(df$avg_tp)
+
+summary(df$avg_tp)
 ```
 
-    ## Warning: package 'ggplot2' was built under R version 4.4.3
+    ##      Min.   1st Qu.    Median      Mean   3rd Qu.      Max. 
+    ## 0.0000306 0.0106985 0.0190383 0.0260156 0.0327398 1.1188502
+
+Distribution for Long Run Total Precipitation average
 
 ``` r
+ggplot() +
+  geom_histogram(data = df, mapping = aes(avg_tp), bins=100) +
+  scale_x_continuous(limits = c(0, .2))  +
+  
+  geom_vline(xintercept = q1_tp, color = "red", linetype=2) + 
+  annotate("text", x = q1_tp-.01, y=50000, label = "25th", color="red") +
+  
+  geom_vline(xintercept = avg_tp, color = "red", linetype=2) + 
+  annotate("text", x = avg_tp, y=50000, label = "avg", color="red") +
+  
+  geom_vline(xintercept = q3_tp, color = "red", linetype=2) + 
+  annotate("text", x = q3_tp+.01, y=50000, label = "75th", color="red") +
+  
+  ggtitle("Histogram for Long Run World Temperature Average (2000-2019)")
+```
+
+    ## Warning: Removed 2018 rows containing non-finite outside the scale range
+    ## (`stat_bin()`).
+
+    ## Warning: Removed 2 rows containing missing values or values outside the scale range
+    ## (`geom_bar()`).
+
+![](prec-data_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+
+When looking at total rainfall over the year, very wet areas like the
+Amazon rainforest and dry areas like North Africa are easy to see.
+
+``` r
+library(ggplot2)
+
 ggplot() + 
   geom_raster(data = df, mapping = aes(x = x, y = y, fill = avg_tp)) +
   coord_fixed() +
-  scale_fill_viridis_b(name = "m", limits = c(0,0.015)) +
+  scale_fill_viridis_b(name = "m", limits = c(0, .1), breaks = seq(0, .1, .025)) +
   ggtitle("All-time Avg Total Precipitations 2000-2019")
 ```
 
-![](prec-data_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+![](prec-data_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
 ``` r
 ggplot() +
@@ -416,14 +475,14 @@ ggplot() +
   geom_histogram(data = df, aes(x = tp_2019), 
                  fill = "tomato", alpha = 0.5, bins = 100) +
   labs(x = "Total Precipitations (m)", y = "Count", title = "Histogram of Total Precipitations: 2000 vs 2019") +
-  scale_x_continuous(limits = c(0, 0.025)) +
+  scale_x_continuous(limits = c(0, 0.2)) +
   guides(fill = guide_legend(title = "Year"))
 ```
 
-    ## Warning: Removed 729 rows containing non-finite outside the scale range
+    ## Warning: Removed 2150 rows containing non-finite outside the scale range
     ## (`stat_bin()`).
 
-    ## Warning: Removed 497 rows containing non-finite outside the scale range
+    ## Warning: Removed 2119 rows containing non-finite outside the scale range
     ## (`stat_bin()`).
 
     ## Warning: Removed 2 rows containing missing values or values outside the scale range
@@ -431,4 +490,23 @@ ggplot() +
     ## Removed 2 rows containing missing values or values outside the scale range
     ## (`geom_bar()`).
 
-![](prec-data_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](prec-data_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+
+``` r
+summary(df$prec_diff)
+```
+
+    ##       Min.    1st Qu.     Median       Mean    3rd Qu.       Max. 
+    ## -2.126e-01 -2.270e-03  6.795e-05 -9.648e-05  2.496e-03  1.220e-01
+
+Let’s plot where it rained more or less than then Long Run average.
+
+``` r
+ggplot() + 
+  geom_raster(data = df, mapping = aes(x = x, y = y, fill = prec_diff)) +
+  scale_fill_viridis_b(limits = c(-.15, .15), breaks=seq(-.15, .15, .15))  +
+  coord_fixed() +
+  ggtitle("Total Precipitation difference 2019 vs Avg")
+```
+
+![](prec-data_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
