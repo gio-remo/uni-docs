@@ -7,9 +7,8 @@ Code
 
 Source: <https://doi.org/10.5061/dryad.dk1j0>
 
-Also Peri (2019) uses cell-level data for income to split observations
-into 4 income groups (poor, mid-poor, mid-rich, rich). However, two
-drawbacks:
+Peri (2019) uses cell-level data for income to split observations into 4
+income groups (poor, mid-poor, mid-rich, rich). However, two drawbacks:
 
 - low frequency, 10 years intervals between 1980 and 2100
 - low resolution, 0.5° (= 30 arc-min,
@@ -27,93 +26,65 @@ Goal: distribute cells based on their GPD per capita into 4 percentiles
 1)  Long-run income average for all cells, 2000-2015
 2)  Assign percentiles
 
-Making income percentile at cell-level and not using coutry-level data
+Making income percentile at cell-level and not using country-level data
 (eg. from World Bank) allows me to keep taking advantage of the fine
 spatial resolution, capturing within-country variation.
 
 Handling NetCDF files in R: - <https://rdrr.io/cran/ncdf4/man/> -
 <https://pjbartlein.github.io/REarthSysSci/netCDF.html>
 
+**RESAMPLING**! Climate data are in 6 arcmin (0.1°). Therefore I need to
+resample Income data first, from 5 arcmin (0.083°) to 6 arcmin! Loss in
+resolution is not drastic and the aggregation helps in reducing data
+complexity.
+
+``` r
+library(terra)
+```
+
+    ## Warning: package 'terra' was built under R version 4.4.3
+
+    ## terra 1.8.29
+
 ``` r
 library(ncdf4)
 
 filepath_GDP_per_capita_PPP_1990_2015_v2 <- "../data/GDP_per_capita_PPP_1990_2015_v2.nc"
-GDP_per_capita_PPP_1990_2015_v2 <- nc_open(filepath_GDP_per_capita_PPP_1990_2015_v2)
+r_gdp <- rast(filepath_GDP_per_capita_PPP_1990_2015_v2)
+
+r_gdp
 ```
 
-``` r
-# Extract variables of interest
-lat <- ncvar_get(GDP_per_capita_PPP_1990_2015_v2, "latitude") # x2160
-lon <- ncvar_get(GDP_per_capita_PPP_1990_2015_v2, "longitude") # x4320
-years_all <- ncvar_get(GDP_per_capita_PPP_1990_2015_v2, "time") # 1990-2015
-years <- years_all[11:26] # Subset years 2000-2015
-
-gdp <- ncvar_get(
-  GDP_per_capita_PPP_1990_2015_v2, 
-  "GDP_per_capita_PPP", 
-  start = c(1, 1, 11), # Start from beginning of lon and lat, and year 11
-  count = c(-1, -1, 16) # Read all lon, all lat, and 16 years (2000–2015)
-) # Size: 2160 lat * 4320 lon * 16 years = 149.299.200 observations
-
-# From 3D array to 1D vector
-gdp_vec <- as.vector(gdp)
-
-# Build coordinate grid (lon, lat, time)
-grid <- expand.grid(
-  lon = lon,
-  lat = lat,
-  year = years
-)
-
-# Combine into a dataframe
-gdp_df_full <- data.frame(
-  lon = grid$lon,
-  lat = grid$lat,
-  year = grid$year,
-  gdp = gdp_vec
-)
-
-# Remove missing values
-gdp_df <- gdp_df_full[!is.na(gdp_df_full$gdp), ] # From 149ml obs, to 36ml obs
-```
-
-Now that we have imported the dataset, let’s make the average of the
-cell GPD over 2000-2015.
+    ## class       : SpatRaster 
+    ## dimensions  : 2160, 4320, 26  (nrow, ncol, nlyr)
+    ## resolution  : 0.08333333, 0.08333334  (x, y)
+    ## extent      : -180, 180, -90, 90  (xmin, xmax, ymin, ymax)
+    ## coord. ref. : +proj=longlat +datum=WGS84 +no_defs 
+    ## source      : GDP_per_capita_PPP_1990_2015_v2.nc 
+    ## varname     : GDP_per_capita_PPP (Gross Domestic Production (GDP) per capita (PPP)) 
+    ## names       :                           GDP_p~PPP_1,                           GDP_p~PPP_2,                           GDP_p~PPP_3,                           GDP_p~PPP_4,                           GDP_p~PPP_5,                           GDP_p~PPP_6, ... 
+    ## unit        : constant 2011 international US dollar, constant 2011 international US dollar, constant 2011 international US dollar, constant 2011 international US dollar, constant 2011 international US dollar, constant 2011 international US dollar, ...
 
 ``` r
-library(dplyr)
-```
+# Select years 2000–2015
+r_gdp_sel <- r_gdp[[11:26]]
 
-    ## Warning: package 'dplyr' was built under R version 4.4.3
+# Compute mean across years
+r_gdp_mean <- mean(r_gdp_sel, na.rm = TRUE)
 
-    ## 
-    ## Attaching package: 'dplyr'
+# Template at 0.1° (6 arcmin) resolution
+r_template <- rast(ext(r_gdp_mean), resolution = 0.1, crs = crs(r_gdp_mean))
 
-    ## The following objects are masked from 'package:stats':
-    ## 
-    ##     filter, lag
+# Resample to 0.1°
+r_gdp_resampled <- resample(r_gdp_mean, r_template, method = "bilinear")
 
-    ## The following objects are masked from 'package:base':
-    ## 
-    ##     intersect, setdiff, setequal, union
-
-``` r
-# Average GDP 2000-2015
-gdp_avg <- gdp_df %>%
-  group_by(lon, lat) %>%
-  summarise(mean_gdp = mean(gdp, na.rm = TRUE))
-```
-
-    ## `summarise()` has grouped output by 'lon'. You can override using the `.groups`
-    ## argument.
-
-``` r
-# Now the size is 2,3ml observations.
-# Check: 2160*4320, net of NA values of oceans/lakes, global land surface is 29%
+# Convert to data.frame
+gdp_avg <- as.data.frame(r_gdp_resampled, xy = TRUE, na.rm = TRUE)
+names(gdp_avg)[3] <- "mean_gdp"
 ```
 
 Let’s see the distribution of the average GDP per capita. Only few
-outliers (70k observations) at avg_gdp \> \$125k.
+outliers (50k observations) at avg_gdp \> \$125k.
 
 ``` r
 library(ggplot2)
@@ -122,8 +93,11 @@ library(ggplot2)
     ## Warning: package 'ggplot2' was built under R version 4.4.3
 
 ``` r
+# Remove outliers to calculate quantiles
+gdp_avg_clean <- gdp_avg[gdp_avg$mean_gdp < 125000, ]
+
 # Quartiles
-p <- quantile(gdp_avg$mean_gdp, probs = c(0.25, 0.5, 0.75))
+p <- quantile(gdp_avg_clean$mean_gdp, probs = c(0.25, 0.5, 0.75))
 
 # Histogram
 ggplot(gdp_avg, aes(mean_gdp)) +
@@ -139,7 +113,7 @@ ggplot(gdp_avg, aes(mean_gdp)) +
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](income-data_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+![](income-data_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
 Let’s split observations in quartiles. In this way, we can later group
 Net-Migration and Climate data in GDP clusters.
@@ -157,27 +131,135 @@ gdp_avg$gdp_quartile <- cut(
 Let’s plot average GDP per capita.
 
 ``` r
-ggplot(gdp_avg, aes(x=lon, y=lat, fill=mean_gdp)) +
+ggplot(gdp_avg, aes(x=x, y=y, fill=mean_gdp)) +
   geom_tile() +
   coord_fixed() +
-  scale_fill_viridis_c(name = "GDP per capita", limits = c(0,125000), oob = scales::squish, breaks = seq(0, 125000, length.out=10))
+  scale_fill_viridis_c(name = "GDP per capita", limits = c(0,125000), oob = scales::squish)
 ```
 
-![](income-data_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+![](income-data_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
 ``` r
 #ggsave("test.png", units = "px", width = 2000, height = 1500)
 ```
 
-Let’s plot quartiles on the map.
+Let’s plot quartiles on the map. It’s visible how using cell-level data,
+instead of country-level, we have within-country variation (and not
+corresponding to regional administrative borders).
 
 ``` r
-ggplot(gdp_avg, aes(x=lon, y=lat, fill=gdp_quartile)) +
+ggplot(gdp_avg, aes(x=x, y=y, fill=gdp_quartile)) +
   geom_tile() +
   coord_fixed()
 ```
 
-![](income-data_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+![](income-data_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
+Some Summary Stats
+
+``` r
+summary(gdp_avg$mean_gdp)
+```
+
+    ##     Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+    ##    449.2   6390.4  19316.2  26655.9  39673.9 132869.7
+
+Number of cells: 1,5 mln.
+
+``` r
+length(gdp_avg$mean_gdp)
+```
+
+    ## [1] 1572666
+
+Number of cell in each income group.
+
+``` r
+table(gdp_avg$gdp_quartile)
+```
+
+    ## 
+    ##     Q1     Q2     Q3     Q4 
+    ## 389525 376595 376245 430301
+
+Info ORIGINAL raster
+
+``` r
+ext(r_gdp_mean)
+```
+
+    ## SpatExtent : -179.999994912559, 179.999994912559, -90.0000025443095, 90.0000025443094 (xmin, xmax, ymin, ymax)
+
+``` r
+res(r_gdp_mean)
+```
+
+    ## [1] 0.08333333 0.08333334
+
+Info RESAMPLED raster
+
+``` r
+ext(r_gdp_resampled)
+```
+
+    ## SpatExtent : -179.999994912559, 179.999994912559, -90.0000025443095, 90.0000025443094 (xmin, xmax, ymin, ymax)
+
+``` r
+res(r_gdp_resampled)
+```
+
+    ## [1] 0.1 0.1
+
+This is how the GRID has changed after resampling.
+
+``` r
+# Area
+region <- ext(10, 11, 50, 51) # lon_min, lon_max, lat_min, lat_max
+
+# Crop
+r_gdp_original_crop <- crop(r_gdp_mean, region) # original
+r_gdp_resampled_crop <- crop(r_gdp_resampled, region) # resampled
+
+# To data frames
+df_original <- as.data.frame(r_gdp_original_crop, xy = TRUE, na.rm = TRUE)
+df_resampled <- as.data.frame(r_gdp_resampled_crop, xy = TRUE, na.rm = TRUE)
+
+ggplot() +
+  # Original
+  geom_tile(data = df_original, aes(x = x, y = y), fill = "black", alpha = .5, color = "black", linewidth = 1) +
+  
+  # Resampled
+  geom_tile(data = df_resampled, aes(x = x, y = y), fill = NA, color = "red", linewidth = 1) +
+  
+  coord_fixed()
+```
+
+![](income-data_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+
+Let’s see the VALUEs.
+
+``` r
+library(ggnewscale) # two color scales
+```
+
+    ## Warning: package 'ggnewscale' was built under R version 4.4.3
+
+``` r
+ggplot() +
+  # Original
+  geom_tile(data = df_original, aes(x = x, y = y, fill = mean)) +
+  scale_fill_viridis_c(name = "GDP original", option = "magma", alpha = .8) +
+  
+  ggnewscale::new_scale_fill() +  # Enables second fill scale
+  
+  # Resampled
+  geom_tile(data = df_resampled, aes(x = x, y = y, fill = mean), alpha = .5, color = "black", linewidth = .5) +
+  scale_fill_viridis_c(name = "GDP resampled", option = "viridis", alpha = 0.6) +
+  
+  coord_fixed()
+```
+
+![](income-data_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 Let’s export our final dataset in csv.
 
