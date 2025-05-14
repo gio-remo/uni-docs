@@ -120,7 +120,11 @@ Some Summary Stats
 summary(gdp_avg$mean_gdp)
 ```
 
-Number of cells: 1,5 mln.
+Number of cells: 1,5 mln
+
+- 360° / 0.1° = 3600 cells lon
+- 180° / 0.1° = 1800 cells lat
+- +- 70% of the world is water
 
 ```{r}
 length(gdp_avg$mean_gdp)

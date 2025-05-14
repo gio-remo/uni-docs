@@ -164,7 +164,11 @@ summary(gdp_avg$mean_gdp)
     ##     Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
     ##    449.2   6390.4  19316.2  26655.9  39673.9 132869.7
 
-Number of cells: 1,5 mln.
+Number of cells: 1,5 mln
+
+- 360° / 0.1° = 3600 cells lon
+- 180° / 0.1° = 1800 cells lat
+- +- 70% of the world is water
 
 ``` r
 length(gdp_avg$mean_gdp)
