@@ -53,8 +53,8 @@ gc() # free memory
 ```
 
     ##              used    (Mb) gc trigger    (Mb)   max used    (Mb)
-    ## Ncells    1254310    67.0    2162657   115.5    2162657   115.5
-    ## Vcells 1557835448 11885.4 4486615427 34230.2 3113980635 23757.8
+    ## Ncells    1254487    67.0    2161441   115.5    2161441   115.5
+    ## Vcells 1557836392 11885.4 4486616787 34230.2 3113981579 23757.8
 
 ``` r
 # 2) Create rasters and compute year average
@@ -384,19 +384,13 @@ for (j in seq_along(years_unique)) {
 ``` r
 rm(temp_c)
 rm(r)
-rm(temp_c_slice)
-```
-
-    ## Warning in rm(temp_c_slice): object 'temp_c_slice' not found
-
-``` r
 rm(yearly_raster)
 gc()
 ```
 
     ##           used (Mb) gc trigger    (Mb)   max used    (Mb)
-    ## Ncells 1266704 67.7    2162658   115.5    2162658   115.5
-    ## Vcells 1804391 13.8 3589292342 27384.2 3113980635 23757.8
+    ## Ncells 1266871 67.7    2161441   115.5    2161441   115.5
+    ## Vcells 1805321 13.8 3589293430 27384.2 3113981579 23757.8
 
 ``` r
 # 3) Yearly rasters
@@ -421,6 +415,7 @@ df_avg <- as.data.frame(time_avg_raster, xy = TRUE)
 df <- merge(df_2000, df_2019, by = c("x", "y"), suffixes = c("_2000", "_2019"))
 df <- merge(df, df_avg, by = c("x", "y"))
 colnames(df) <- c("x", "y", "temp_2000", "temp_2019", "avg_temp")
+df$temp_diff <- df$temp_2019 - df$avg_temp # Temp. diff. between last year and long run avg
 df$x <- round(df$x, 1)
 df$y <- round(df$y, 1)
 
@@ -442,6 +437,93 @@ ggplot() +
 ```
 
 ![](temp-data_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+
+Summary Stats for Long Run Temperature average
+
+``` r
+# Summary Stats
+
+q1_temp <- quantile(df$avg_temp, 0.25)
+q3_temp <- quantile(df$avg_temp, 0.75)
+avg_temp <- mean(df$avg_temp)
+
+summary(df$avg_temp)
+```
+
+    ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    ## -27.806  -2.944   9.706   8.889  22.979  34.822
+
+Distribution for Long Run Temperature average
+
+``` r
+ggplot() +
+  geom_histogram(data = df, mapping = aes(avg_temp), bins=100) +
+  scale_x_continuous(limits = c(-30, 35), breaks = seq(-30, 35, 5)) +
+  
+  geom_vline(xintercept = q1_temp, color = "red", linetype=2) + 
+  annotate("text", x = q1_temp-2, y=50000, label = "25th", color="red") +
+  
+  geom_vline(xintercept = avg_temp, color = "red", linetype=2) + 
+  annotate("text", x = avg_temp-2, y=50000, label = "avg", color="red") +
+  
+  geom_vline(xintercept = q3_temp, color = "red", linetype=2) + 
+  annotate("text", x = q3_temp-2, y=50000, label = "75th", color="red") +
+  
+  ggtitle("Histogram for Long Run World Temperature Average (2000-2019)")
+```
+
+    ## Warning: Removed 2 rows containing missing values or values outside the scale range
+    ## (`geom_bar()`).
+
+![](temp-data_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+
+``` r
+ggplot() + 
+  geom_raster(data = df, mapping = aes(x = x, y = y, fill = temp_diff)) +
+  coord_fixed() +
+  scale_fill_viridis_b(name = "°C", breaks = seq(-2, 2, 1)) +
+  ggtitle("Temperature Difference between 2019 and Long-Run Avg")
+```
+
+![](temp-data_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+
+Distribution of the temperature difference between 2019 and the long-run
+average. The mean difference is +0.5°C, indicating a general warming.
+The interquartile range (25th–75th percentile) is entirely above zero,
+suggesting that the majority of observations experienced above-average
+temperatures in 2019.
+
+``` r
+# Summary Stats
+
+q1_temp <- quantile(df$temp_diff, 0.25)
+q3_temp <- quantile(df$temp_diff, 0.75)
+avg_temp <- mean(df$temp_diff)
+
+summary(df$temp_diff)
+```
+
+    ##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    ## -2.7611  0.1240  0.4419  0.5181  0.9470  3.4147
+
+``` r
+ggplot() +
+  geom_histogram(data = df, mapping = aes(temp_diff), bins=100) +
+  scale_x_continuous(breaks = seq(-3, 3, 1)) +
+  
+  geom_vline(xintercept = q1_temp, color = "red", linetype=2) + 
+  annotate("text", x = q1_temp-.2, y=60000, label = "25th", color="red") +
+  
+  geom_vline(xintercept = avg_temp, color = "red", linetype=2) + 
+  annotate("text", x = avg_temp, y=60000, label = "avg", color="red") +
+  
+  geom_vline(xintercept = q3_temp, color = "red", linetype=2) + 
+  annotate("text", x = q3_temp+.2, y=60000, label = "75th", color="red") +
+  
+  ggtitle("Histogram for Temperature Difference 2019-Avg")
+```
+
+![](temp-data_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
 ``` r
 library(patchwork)
@@ -476,7 +558,12 @@ p2 <- ggplot() +
 p1 + p2 + plot_layout(ncol = 1)
 ```
 
-![](temp-data_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](temp-data_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+
+Distribution of temperature in 2000 vs. 2019. The 2019 distribution is
+clearly shifted to the right, indicating generally higher temperatures
+compared to 2000. However, since these are single-year snapshots, they
+may reflect anomalous conditions and should be interpreted with caution.
 
 ``` r
 ggplot() +
@@ -497,4 +584,4 @@ ggplot() +
     ## Removed 2 rows containing missing values or values outside the scale range
     ## (`geom_bar()`).
 
-![](temp-data_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+![](temp-data_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
