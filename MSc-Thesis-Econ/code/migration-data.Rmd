@@ -21,6 +21,8 @@ Let's import the dataset produced by Niva (2023):
 - Yearly 2000-2019 (20 years)
 - High-resolution, 5 arc-min / 0.083° https://www.inchcalculator.com/convert/degree-to-arcminute/
 
+**RESAMPLING**! Climate data have resolution of 6 arcmin (0.1°). Therefore I need to resample migration data from 5 arcmin (0.083°) to 6 arcmin! 
+
 ```{r}
 library(terra)
 library(tidyr)
@@ -29,31 +31,60 @@ library(dplyr)
 
 # Import Net-Migration data, 2000-2019 yearly (20 layers)
 filepath_raster_netMgr_2000_2019_annual <- "../data/raster_netMgr_2000_2019_annual.tif"
-raster_netMgr_2000_2019_annual <- rast(filepath_raster_netMgr_2000_2019_annual)
+r_original <- rast(filepath_raster_netMgr_2000_2019_annual)
 
-raster_netMgr_2000_2019_annual # 2160 * 4320 * 20 years
+r_original # 2160 * 4320 * 20 years
+```
+
+**RESAMPLING!**
+
+```{r}
+# Template at 0.1° (6 arcmin) resolution
+r_template <- rast(ext(r_original), resolution = 0.1, crs = crs(r_original))
+
+# Resample to 0.1°
+r_resampled <- resample(r_original, r_template, method = "bilinear")
+
+# Convert to data.frame
+df_netMgr_2000_2019_annual <- as.data.frame(r_resampled, xy = TRUE, na.rm = TRUE)
+```
+
+ORIGINAL raster
+
+```{r}
+ext(r_original)
 ```
 
 ```{r}
-# Convert to df
-df_netMgr_2000_2019_annual <- as.data.frame(raster_netMgr_2000_2019_annual, xy = TRUE) # 2.259.320 obs for 20 years
+res(r_original)
+```
 
+RESAMPLED raster
+
+```{r}
+ext(r_resampled)
+```
+
+```{r}
+res(r_resampled)
+```
+
+Now we can start working on the dataset.
+
+```{r}
 # From wide (22 columns) to long
-df_netMgr_2000_2019_annual_long <- pivot_longer(df_netMgr_2000_2019_annual, -c(x, y), names_to = "layer", values_to = "value") # 45.186.400 obs
-colnames(df_netMgr_2000_2019_annual_long) <- c("lon", "lat", "year", "netmgr")
+df_netMgr_2000_2019_annual_long <- pivot_longer(df_netMgr_2000_2019_annual, -c(x, y), names_to = "layer", values_to = "value") # 31.375.980 obs
+colnames(df_netMgr_2000_2019_annual_long) <- c("x", "y", "year", "netmgr")
 
 summary(df_netMgr_2000_2019_annual_long$netmgr)
 ```
 
-Remove missing values.
-
 ```{r}
-# Remove NAs
-df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[!is.na(df_netMgr_2000_2019_annual_long$netmgr),]
+df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr == 0, ]
 ```
 
 
-Many cells (6,7 mln) have value 0. This would imply that natural birth and death rate perfectly match. Leaving these 0 in the dataset alters the analysis, and as a perfect match of the demographic rates seems rather a rare residual case.
+Many cells (4.2 mln) have value 0. This would imply that natural birth and death rate perfectly match. Leaving these 0 in the dataset alters the analysis, and as a perfect match of the demographic rates seems rather a residual case (total observations: 31 mln).
 
 I've decided to remove the observations with value 0. Here I plot these observations, they mostly cover Greenland.
 
@@ -62,14 +93,13 @@ I've decided to remove the observations with value 0. Here I plot these observat
 df_zeros <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr == 0,] # Length 6,7mln observations
 
 avg_zeros <- df_zeros %>%
-  group_by(lon, lat) %>%
+  group_by(x, y) %>%
   summarise(m = mean(netmgr, na.rm = TRUE))
 
 ggplot() +
-  geom_tile(data = avg_zeros, aes(lon, lat), fill = "red") +
+  geom_tile(data = avg_zeros, aes(x, y), fill = "red") +
   coord_fixed()
 ```
-
 
 Therefore, let's remove observations with 0.
 
@@ -118,13 +148,13 @@ ggplot(data = df_netMgr_2000_2019_annual_long, aes(netmgr)) +
 ```
 
 
-Single observations (cell, year) with POSITIVE Net-Migration = 18,1 mln
+Single observations (cell, year) with POSITIVE Net-Migration = 12 mln
 
 ```{r}
 df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr > 0, ]
 ```
 
-Single observations (cell, year) with NEGATIVE Net-Migration = 19,5 mln
+Single observations (cell, year) with NEGATIVE Net-Migration = 13 mln
 
 ```{r}
 df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr < 0, ]
@@ -134,7 +164,7 @@ It's time to merge Income and Net-Migration data.
 
 1. Both datasets use the same coordinate/projection system: EPSG:4326 (WGS84) https://epsg.io/4326. This is reassuring, as allows us to spatially merge the features of the two datasets without having to resample.
 
-2. Both datasets have the same resolution: 0.83° / 5 arc-min https://www.inchcalculator.com/convert/degree-to-arcminute/
+2. After RESAMPLING, both datasets have the same resolution: 0.1° / 6 arc-min https://www.inchcalculator.com/convert/degree-to-arcminute/
 
 Let's plot them together.
 
@@ -148,15 +178,15 @@ netmgr_1y <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$yea
 library(patchwork)
 
 p1 <- ggplot() +
-  geom_tile(data = gdp, aes(x = lon, y = lat, fill = mean_gdp)) +
+  geom_raster(data = gdp, aes(x = x, y = y, fill = mean_gdp)) +
   coord_fixed() +
   scale_fill_viridis_c(name = "GDP per capita")
 
 
 p2 <- ggplot() + 
-  geom_tile(data = netmgr_1y, aes(x = lon, y = lat, fill = netmgr)) +
+  geom_raster(data = netmgr_1y, aes(x = x, y = y, fill = netmgr)) +
   coord_fixed() +
-  scale_fill_viridis_c(name = "Net-Migr/1000pp")
+  scale_fill_viridis_b(name = "Net-Migr/1000pp", limits = c(-50, 50), breaks = seq(-50, 50, 25))
 
 p1 + p2 + plot_layout(ncol = 1)
 ```
@@ -164,11 +194,11 @@ p1 + p2 + plot_layout(ncol = 1)
 ```{r}
 # Function to filter
 filter_continent <- function(grid, lon_min, lon_max, lat_min, lat_max) {
-  subset(grid, lon >= lon_min & lon <= lon_max & lat >= lat_min & lat <= lat_max)
+  subset(grid, x >= lon_min & x <= lon_max & y >= lat_min & y <= lat_max)
 }
 ```
 
-Let's overlap them to check whether they're actually using the same grid system!
+Let's overlap them to check whether they're actually using the same grid after resampling!
 
 First, let's subset our global dataset and select a small area, north-east Italy.
 
@@ -178,12 +208,12 @@ gdp_subset <- filter_continent(gdp, lon_min = 10, lon_max = 15, lat_min = 44, la
 netmgr_subset <- filter_continent(df_netMgr_2000_2019_annual_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
 
 p3 <- ggplot() +
-  geom_tile(data = gdp_subset, aes(x = lon, y = lat, fill = mean_gdp)) +
+  geom_tile(data = gdp_subset, aes(x = x, y = y, fill = mean_gdp)) +
   coord_fixed() +
   scale_fill_viridis_c(name = "Avg GDP", option = "magma", alpha = 1)
 
 p4 <- ggplot() +
-  geom_tile(data = netmgr_subset, aes(x = lon, y = lat, fill = netmgr)) +
+  geom_tile(data = netmgr_subset, aes(x = x, y = y, fill = netmgr)) +
   coord_fixed() +
   scale_fill_viridis_c(name = "Net-Migration/1000pp", option = "viridis")
 
@@ -197,14 +227,14 @@ library(ggnewscale) # Library to have multiple legends/scales
 
 ggplot() +
   # 1st layer: avg GDP
-  geom_tile(data = gdp_subset, aes(x = lon, y = lat), fill = "white", alpha = 0, color="black", size = 1) +
+  geom_tile(data = gdp_subset, aes(x = x, y = y), fill = "white", alpha = 0, color="black", size = 1) +
   coord_fixed() +
   scale_fill_viridis_c(name = "Avg GDP", option = "magma") +
   
   new_scale_fill() + # New scale layer
   
   # 2nd layer: Net-Migration/1000pp
-  geom_tile(data = netmgr_subset, aes(x = lon, y = lat), fill = "white", alpha = 0, color = "red", size = 0.1) +
+  geom_tile(data = netmgr_subset, aes(x = x, y = y), fill = "white", alpha = 0, color = "red", size = 0.1) +
   coord_fixed() +
   scale_fill_viridis_c(name = "Net-Migration/1000pp", option = "viridis") +
   
@@ -222,8 +252,8 @@ Spatial join with FNN library: https://rdrr.io/cran/FNN/man/get.knn.html
 library(FNN)
 
 # Extract coordinates
-netmgr_coords <- as.matrix(df_netMgr_2000_2019_annual_long[, c("lon", "lat")])
-gdp_coords <- as.matrix(gdp[, c("lon", "lat")])
+netmgr_coords <- as.matrix(df_netMgr_2000_2019_annual_long[, c("x", "y")])
+gdp_coords <- as.matrix(gdp[, c("x", "y")])
 
 # Find nearest neighbor indices
 nn_idx <- get.knnx(gdp_coords, netmgr_coords, k = 1)$nn.index[, 1]
@@ -239,11 +269,13 @@ df_netMgr_2000_2019_annual_long$mean_gdp <- gdp$mean_gdp[nn_idx]
 netmgr_subset1 <- filter_continent(df_netMgr_2000_2019_annual_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
 
 p5 <- ggplot() +
-  geom_tile(data = gdp_subset, aes(x = lon, y = lat, fill = gdp_quartile)) +
+  geom_tile(data = gdp_subset, aes(x = x, y = y, fill = gdp_quartile)) +
+  scale_fill_discrete(name = "GDP from original") +
   coord_fixed()
 
 p6 <- ggplot() +
-  geom_tile(data = netmgr_subset1, aes(x = lon, y = lat, fill = gdp_quartile)) +
+  geom_tile(data = netmgr_subset1, aes(x = x, y = y, fill = gdp_quartile)) +
+  scale_fill_discrete(name = "GDP after merge") +
   coord_fixed()
 
 p5 + p6 + plot_layout(ncol = 1)
