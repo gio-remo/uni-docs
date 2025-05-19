@@ -160,6 +160,9 @@ Single observations (cell, year) with NEGATIVE Net-Migration = 13 mln
 df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr < 0, ]
 ```
 
+
+### Merge with Income
+
 It's time to merge Income and Net-Migration data.
 
 1. Both datasets use the same coordinate/projection system: EPSG:4326 (WGS84) https://epsg.io/4326. This is reassuring, as allows us to spatially merge the features of the two datasets without having to resample.
@@ -263,7 +266,6 @@ df_netMgr_2000_2019_annual_long$gdp_quartile <- gdp$gdp_quartile[nn_idx]
 df_netMgr_2000_2019_annual_long$mean_gdp <- gdp$mean_gdp[nn_idx]
 ```
 
-
 ```{r}
 # Subset the area of interest
 netmgr_subset1 <- filter_continent(df_netMgr_2000_2019_annual_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
@@ -323,3 +325,110 @@ gt(summary_table_migr) %>%
 ```
 
 
+### Merge with Temperature
+
+```{r}
+# Import clean version of Temp data
+temp <- read.csv("temperature_summary.csv")
+
+temp_subset <- filter_continent(temp, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
+
+p7 <- ggplot() +
+  geom_tile(data = temp_subset, aes(x = x, y = y, fill = avg_temp)) +
+  coord_fixed() +
+  scale_fill_viridis_c(name = "Avg Temp", option = "viridis")
+
+p3 + p7 + plot_layout(ncol = 1)
+```
+
+```{r}
+# Merge with FNN
+
+# Extract coordinates
+temp_coords <- as.matrix(temp[, c("x", "y")])
+
+# Find nearest neighbor indices GDP-TEMP
+nn_idx_gdp_temp <- get.knnx(temp_coords, gdp_coords, k = 1)$nn.index[, 1]
+
+# Assign
+cross <- gdp
+cross$avg_temp <- temp$avg_temp[nn_idx_gdp_temp]
+cross$temp_diff <- temp$temp_diff[nn_idx_gdp_temp]
+```
+
+```{r}
+# Summary for full sample
+summary_temp_full_sample <- summary_stats(cross, avg_temp) %>%
+  mutate(Group = "Full sample")
+
+# Summary by GDP group
+summary_temp_by_group <- cross %>%
+  group_by(gdp_quartile) %>%
+  # Apply function to each group
+  group_modify(~summary_stats(.x, avg_temp)) %>%
+  rename(Group = gdp_quartile)
+
+# Combine in one table
+summary_table_temp <- bind_rows(summary_temp_full_sample, summary_temp_by_group) %>%
+  select(Group, Obs., Mean, `St. dev.`, `25th`, `75th`)
+
+# Print table
+gt(summary_table_temp) %>% 
+  fmt_number(columns = "Obs.", use_seps = TRUE, decimals = 0) %>% 
+  fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
+  tab_options(table.width = pct(80)) %>% 
+  tab_header(title = "Long-run average temperatures (°C)")
+```
+
+```{r}
+df_avg_netmgr <- df_netMgr_2000_2019_annual_long %>%
+  group_by(x, y, gdp_quartile) %>%
+  summarise(netmgr_avg = mean(netmgr, na.rm = TRUE), .groups = "drop")
+```
+
+```{r}
+temp <- read.csv("temperature_summary.csv")
+
+# Merge with FNN
+
+# Extract coordinates
+temp_coords <- as.matrix(temp[, c("x", "y")])
+df_loong <- as.matrix(df_avg_netmgr[, c("x", "y")])
+
+# Find nearest neighbor indices GDP-TEMP
+nn_idx_gdp_temp <- get.knnx(temp_coords, df_loong, k = 1)$nn.index[, 1]
+
+# Assign
+df_avg_netmgr$avg_temp <- temp$avg_temp[nn_idx_gdp_temp]
+df_avg_netmgr$temp_diff <- temp$temp_diff[nn_idx_gdp_temp]
+```
+
+```{r}
+subset <- df_avg_netmgr[df_avg_netmgr$gdp]
+
+ggplot(df_avg_netmgr, aes(x = temp_diff, y = netmgr_avg)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  facet_wrap(~ gdp_quartile) +
+  labs(
+    x = "Temperature Difference (temp_diff)",
+    y = "Average Net Migration (netmgr_avg)",
+    title = "Net Migration vs Temperature Difference by GDP Quartile"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+urban <- read.csv("urban_classification.csv")
+
+# Merge with FNN
+
+# Extract coordinates
+urban_coords <- as.matrix(urban[, c("x", "y")])
+
+# Find nearest neighbor indices GDP-TEMP
+nn_idx_urban <- get.knnx(urban_coords, df_loong, k = 1)$nn.index[, 1]
+
+# Assign
+df_avg_netmgr$urban <- urban$urban[nn_idx_gdp_temp]
+```

@@ -195,7 +195,6 @@ ggplot() +
   # Resampled
   geom_tile(data = df_resampled, aes(x = x, y = y, fill = mean), alpha = .5, color = "black", linewidth = .5) +
   scale_fill_viridis_c(name = "GDP resampled", option = "viridis", alpha = 0.6) +
-  
   coord_fixed()
 ```
 

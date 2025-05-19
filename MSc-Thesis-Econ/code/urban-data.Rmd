@@ -1,0 +1,163 @@
+---
+title: "Code"
+output: github_document
+---
+
+# Urban-Rural data, cell-level
+
+## Global Human Settlement - Degree of Urbanisation (GHS-SMOD)
+
+Source: https://human-settlement.emergency.copernicus.eu/ghs_smod2023.php
+
+Another fundamental piece of information for my analysis is the level of urbanization of each cell. In addition to the fact that most migrations occur from low-GDP to high-GDP countries, most migrations also originate in rural areas and point to urban areas.
+
+Peri (2019) clusters cells based on the population density distribution for each country, creating four groups: rural, semi-rural, semi-urban, and urban. However, using only population density to categorize cell types is not ideal. For example, population density alone doesn't account for other key factors, such as economic activity or the built-up area in the cell, which are essential for correctly classifying a cell.
+
+To this end, the European JRC have built a dataset to comprehensively cluster cells into 8 categories, following the Degree of Urbanisation (European Commission & Statistical Office). To do so, they use data from two dataset: GHS-POP and GHS-BUILT-S.
+
+- 30: URBAN CENTRE
+- 23: DENSE URBAN
+- 22: SEMI-DENSE URBAN
+- 21: SUBURBAN
+- 13: RURAL
+- 12: LOW DENSITY RURAL
+- 11: VERY LOW DENSITY RURAL
+- 10: WATER
+
+To stick to the usual four clusters/quartiles methodology, and to reproduce Peri (2019), I re-classify the categories as follow:
+
+- URBAN: 30, 23
+- SEMI-URBAN: 22, 21
+- SEMI-RURAL: 13, 12
+- RURAL: 11
+- Water cells are removed
+
+Additionally, the JRC provides data at five-year intervals from 2000 to 2020. Rather than arbitrarily selecting a single observation (e.g., the oldest), I decide to assign the mode of the data to each cell for more consistent categorization.
+
+```{r}
+library(terra)
+library(ggplot2)
+library(viridis)
+
+# 1. Load the 5 SMOD rasters into a SpatRaster stack
+files <- c(
+  "GHS_SMOD_E2000_GLOBE_R2023A_4326_30ss_V2_0.tif",
+  "GHS_SMOD_E2005_GLOBE_R2023A_4326_30ss_V2_0.tif",
+  "GHS_SMOD_E2010_GLOBE_R2023A_4326_30ss_V2_0.tif",
+  "GHS_SMOD_E2015_GLOBE_R2023A_4326_30ss_V2_0.tif",
+  "GHS_SMOD_E2020_GLOBE_R2023A_4326_30ss_V2_0.tif"
+)
+stack <- rast(file.path("../data/GHS_SMOD/", files))
+
+# 2. Compute pixel-wise mode across the 5 years
+mode <- modal(stack, na.rm = TRUE)
+
+# 3. Reclassify values into your four categories
+# 30 → 4 (URBAN)
+# 23, 22 → 3 (SEMI-URBAN)
+# 21, 13 → 2 (SEMI-RURAL)
+# 12, 11 → 1 (RURAL)
+# 10 (WATER) → NA
+
+rcl <- matrix(c(
+  30, 4,
+  23, 4,
+  22, 3,
+  21, 3,
+  13, 2,
+  12, 2,
+  11, 1,
+  10, NA
+), ncol = 2, byrow = TRUE)
+
+class <- classify(mode, rcl)
+
+# Define target raster with 0.1 degree resolution
+target_res <- 0.1
+target_raster <- rast(ext(class), resolution = target_res, crs = crs(class))
+
+# Nearest neighbor keeps the original class values intact by assigning each output cell the value of the closest input cell, preserving the discrete categories
+downscaled <- resample(class, target_raster, method = "near")
+
+# Define extent excluding Antarctica
+e_no_antarctica <- ext(xmin(downscaled), xmax(downscaled), -60, ymax(downscaled))
+
+# Crop the downscaled raster
+downscaled <- crop(downscaled, e_no_antarctica)
+
+df <- as.data.frame(downscaled, xy = TRUE, na.rm = TRUE)
+names(df)[3] <- "urban"
+df$x <- round(df$x, 1)
+df$y <- round(df$y, 1)
+
+# Remove rows where urban == 0
+df <- df[df$urban != 0, ]
+
+ggplot() + 
+  geom_raster(data  = df, mapping = aes(x = x, y = y, fill = factor(urban))) +
+  coord_fixed()
+```
+
+```{r}
+# Define Europe extent
+europe_extent <- ext(-10, 40, 35, 72)
+
+# Crop raster to Europe
+downscaled_europe <- crop(downscaled, europe_extent)
+
+# Convert to data frame for ggplot
+df_europe <- as.data.frame(downscaled_europe, xy = TRUE, na.rm = TRUE)
+names(df_europe)[3] <- "urban"
+
+# Round coordinates for clarity
+df_europe$x <- round(df_europe$x, 1)
+df_europe$y <- round(df_europe$y, 1)
+
+# Plot
+ggplot(df_europe) + 
+  geom_raster(aes(x = x, y = y, fill = factor(urban))) +
+  coord_fixed() +
+  scale_fill_viridis_d(name = "Urban Category") +
+  theme_minimal() +
+  labs(
+    title = "Urban-Rural Classification - Europe",
+    x = "Longitude",
+    y = "Latitude"
+  )
+```
+
+SUMMMARY STATISTICS
+
+1) Number and Share of Cells by Class
+
+```{r}
+urban_labels <- c("Rural", "Semi-Rural", "Semi-Urban", "Urban")
+urban_counts <- table(df$urban)
+urban_props <- prop.table(urban_counts)
+
+urban_summary <- data.frame(
+  Class = factor(urban_labels, levels = urban_labels),
+  Count = as.numeric(urban_counts),
+  Share = round(100 * as.numeric(urban_props), 2)
+)
+
+print(urban_summary)
+```
+
+2) Urban-Rural Distribution
+
+```{r}
+ggplot(urban_summary, aes(x = Class, y = Share, fill = Class)) +
+  geom_col() +
+  scale_fill_viridis_d() +
+  labs(
+    title = "Global Distribution of Settlement Classes",
+    y = "Share of Land Area (%)", x = NULL
+  ) +
+  theme_minimal()
+```
+
+```{r}
+write.csv(df, "urban_classification.csv", row.names = FALSE)
+```
+

@@ -236,3 +236,99 @@ ggplot() +
   guides(fill = guide_legend(title = "Year"))
 ```
 
+
+### Merge Temp to Income Quartile
+
+1) RESHAPING TEMP TO LONG
+
+```{r}
+library(data.table)
+
+# Assign year names to the layers
+names(yearly_rasters) <- 2000:2019
+
+# Get coordinates of all raster cells
+coords <- crds(yearly_rasters, na.rm = FALSE)  # matrix [n_cells, 2], columns: x, y
+
+# Get temperature values for each cell and year
+temp_vals <- as.matrix(yearly_rasters)  # matrix [n_cells, 20]
+
+# Create base table
+dt <- data.table(
+  x = coords[, 1],
+  y = coords[, 2]
+)
+
+# Add temperature values
+dt_temp <- as.data.table(temp_vals)
+dt <- cbind(dt, dt_temp)
+
+# To long format: one row per cell-year
+dt_long <- melt(
+  dt,
+  id.vars = c("x", "y"),
+  variable.name = "year",
+  value.name = "temp"
+)
+```
+
+
+2) SPATIAL MERGE
+
+```{r}
+library(FNN)
+
+gdp <- read.csv("../data/income-gdp-quarter.csv")
+
+# Extract coordinates for temp
+temp_coords <- as.matrix(dt_long[, .(x, y)])
+
+# Extract coordinates for gdp
+gdp_coords <- as.matrix(gdp[, c("x", "y")])
+
+# Find index of nearest
+nn_idx <- get.knnx(gdp_coords, temp_coords, k = 1)$nn.index[, 1]
+
+# Merge
+dt_long[, income_q := gdp$gdp_quartile[nn_idx]]
+```
+
+```{r}
+library(gt)
+library(dplyr)
+
+# Summary Statistics
+summary_stats <- function(data, variable) {
+  q <- quantile(data[[deparse(substitute(variable))]], probs = c(0.25, 0.75), na.rm = TRUE)
+  data %>%
+    summarize(
+      Obs. = n(),
+      Mean = mean({{ variable }}, na.rm = TRUE),
+      `St. dev.` = sd({{ variable }}, na.rm = TRUE),
+      `25th` = q[1],
+      `75th` = q[2]
+    )
+}
+
+# Summary for full sample
+summary_temp_full_sample <- summary_stats(dt_long, temp) %>%
+  mutate(Group = "Full sample")
+
+# Summary by GDP group
+summary_temp_by_group <- dt_long %>%
+  group_by(income_q) %>%
+  # Apply function to each group
+  group_modify(~summary_stats(.x, temp)) %>%
+  rename(Group = income_q)
+
+# Combine in one table
+summary_table_temp <- bind_rows(summary_temp_full_sample, summary_temp_by_group) %>%
+  select(Group, Obs., Mean, `St. dev.`, `25th`, `75th`)
+
+# Print nice table
+gt(summary_table_temp) %>% 
+  fmt_number(columns = "Obs.", use_seps = TRUE, decimals = 0) %>% 
+  fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
+  tab_options(table.width = pct(80)) %>% 
+  tab_header(title = "Temp")
+```
