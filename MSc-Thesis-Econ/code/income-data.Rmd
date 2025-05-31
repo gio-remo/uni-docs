@@ -60,6 +60,64 @@ gdp_avg <- as.data.frame(r_gdp_resampled, xy = TRUE, na.rm = TRUE)
 names(gdp_avg)[3] <- "mean_gdp"
 ```
 
+
+### Assign Country Code
+
+```{r}
+library(rnaturalearth)
+library(sf)
+library(FNN)
+
+# Get world countries
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Direct spatial join
+coords_sf <- st_as_sf(
+  gdp_avg[, c("x", "y")], 
+  coords = c("x", "y"), 
+  crs = 4326
+)
+
+country_match <- st_join(coords_sf, world[c("iso_a3_eh")], join = st_intersects)
+gdp_avg$country_code <- country_match$iso_a3_eh
+
+# For NA values (border/water cells), assign nearest country
+na_mask <- is.na(gdp_avg$country_code)
+
+if(sum(na_mask) > 0) {
+  # Get country centroids for nearest neighbor matching
+  country_centroids <- st_centroid(world)
+  country_coords <- st_coordinates(country_centroids)
+  
+  # Get coordinates of NA points
+  na_coords <- as.matrix(gdp_avg[na_mask, c("x", "y")])
+  
+  # Find nearest country for each NA point
+  nn_idx <- get.knnx(country_coords, na_coords, k = 1)$nn.index[, 1]
+  
+  # Assign nearest country codes to NA values
+  gdp_avg$country_code[na_mask] <- world$iso_a3_eh[nn_idx]
+}
+```
+
+Cleaning
+
+```{r}
+# Remove Greenland
+gdp_avg <- gdp_avg[gdp_avg$country_code != "GRL",]
+
+# Remove small islands near Iceland
+gdp_avg <- gdp_avg[
+  !(gdp_avg$x > -45 & gdp_avg$x < 0 & gdp_avg$y > 67 & gdp_avg$y < 90)
+  ,]
+
+# Remove outliers > 120k
+gdp_avg <- gdp_avg[gdp_avg$mean_gdp < 120000,]
+
+# Remove without country code
+gdp_avg <- gdp_avg[gdp_avg$country_code != "-99",]
+```
+
 ```{r}
 library(ggplot2)
 
@@ -70,8 +128,6 @@ ggplot(gdp_avg, aes(x=x, y=y, fill=mean_gdp)) +
 
 
 Let's see the distribution of the average GDP per capita.
-
-Only few outliers (50k observations) at avg_gdp > $125k. >> SIBERIA REMOVED
 
 ```{r}
 # Quartiles
@@ -92,9 +148,6 @@ ggplot(gdp_avg, aes(mean_gdp)) +
 Let's split observations in quartiles. In this way, we can later group Net-Migration and Climate data in GDP clusters.
 
 ```{r}
-# Remove outliers
-gdp_avg <- gdp_avg[gdp_avg$mean_gdp < 120000, ]
-
 # Cut into quartiles
 gdp_avg$gdp_quartile <- cut(
   gdp_avg$mean_gdp,
@@ -205,50 +258,29 @@ ggplot() +
   coord_fixed()
 ```
 
-### Assign Country Code
-
-Before exporting, let's add country code to each cell.
-
-```{r}
-library(rnaturalearth)
-library(sf)
-library(FNN)
-
-# Get world countries
-world <- ne_countries(scale = "medium", returnclass = "sf")
-
-# Direct spatial join
-coords_sf <- st_as_sf(
-  gdp_avg[, c("x", "y")], 
-  coords = c("x", "y"), 
-  crs = 4326
-)
-
-country_match <- st_join(coords_sf, world[c("iso_a3")], join = st_intersects)
-gdp_avg$country_code <- country_match$iso_a3
-
-# For NA values (border/water cells), assign nearest country
-na_mask <- is.na(gdp_avg$country_code)
-message("Points without country assignment: ", sum(na_mask))
-
-if(sum(na_mask) > 0) {
-  # Get country centroids for nearest neighbor matching
-  country_centroids <- st_centroid(world)
-  country_coords <- st_coordinates(country_centroids)
-  
-  # Get coordinates of NA points
-  na_coords <- as.matrix(gdp_avg[na_mask, c("x", "y")])
-  
-  # Find nearest country for each NA point
-  nn_idx <- get.knnx(country_coords, na_coords, k = 1)$nn.index[, 1]
-  
-  # Assign nearest country codes to NA values
-  gdp_avg$country_code[na_mask] <- world$iso_a3[nn_idx]
-}
-```
-
 Let's export our final dataset in csv.
 
 ```{r}
 write.csv(gdp_avg, "income-gdp-quarter.csv", row.names = FALSE)
 ```
+
+EXPORT RASTER DATASET FOR INCOME
+
+```{r}
+library(terra)
+
+# 1. Convert gdp_quartile to numeric
+gdp_avg$gdp_quartile_num <- as.numeric(gdp_avg$gdp_quartile)
+
+# 2. Create two separate rasters from the dataframe
+r_mean_gdp <- rast(gdp_avg[, c("x", "y", "mean_gdp")], type = "xyz", crs = crs(r_gdp_resampled))
+r_quartile <- rast(gdp_avg[, c("x", "y", "gdp_quartile_num")], type = "xyz", crs = crs(r_gdp_resampled))
+
+# 3. Combine into a multi-layer raster (a "SpatRaster" with 2 layers)
+r_income_stack <- c(r_mean_gdp, r_quartile)
+names(r_income_stack) <- c("mean_gdp", "gdp_quartile")
+
+# 4. Export to GeoTIFF
+writeRaster(r_income_stack, filename = "income-gdp-stack.tif", overwrite = TRUE)
+```
+

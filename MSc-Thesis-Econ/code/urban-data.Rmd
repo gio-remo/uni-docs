@@ -96,66 +96,128 @@ ggplot() +
   coord_fixed()
 ```
 
+MERGE WITH INCOME DATA: CROSS-CROSS
+
 ```{r}
-# Define Europe extent
-europe_extent <- ext(-10, 40, 35, 72)
+library(terra)
 
-# Crop raster to Europe
-downscaled_europe <- crop(downscaled, europe_extent)
+# Load the income raster stack
+income_stack <- rast("income-gdp-stack.tif")
 
-# Convert to data frame for ggplot
-df_europe <- as.data.frame(downscaled_europe, xy = TRUE, na.rm = TRUE)
-names(df_europe)[3] <- "urban"
+# Convert income raster to points (this defines our target locations)
+income_points <- as.points(income_stack, na.rm = TRUE)
 
-# Round coordinates for clarity
-df_europe$x <- round(df_europe$x, 1)
-df_europe$y <- round(df_europe$y, 1)
+# Extract urban values at income point locations
+urban_values <- extract(downscaled, income_points, method = "simple")
 
-# Plot
-ggplot(df_europe) + 
-  geom_raster(aes(x = x, y = y, fill = factor(urban))) +
-  coord_fixed() +
-  scale_fill_viridis_d(name = "Urban Category") +
-  theme_minimal() +
-  labs(
-    title = "Urban-Rural Classification - Europe",
-    x = "Longitude",
-    y = "Latitude"
-  )
+# Combine the data
+# income_points already contains the coordinates and income data
+# urban_values contains the ID and urban classification
+df_merged <- as.data.frame(income_points, geom = "XY")
+df_merged$urban <- urban_values[,2]
+
+df_merged <- df_merged[!is.na(df_merged$urban),]
+df_merged <- df_merged[df_merged$urban > 0,]
+
+# Reorder cols
+df_merged <- df_merged[,c(3,4,1,2,5)]
+```
+
+ASSIGN COUNTRY CODE
+
+```{r}
+library(rnaturalearth)
+library(sf)
+library(FNN)
+
+# 1. Load world country polygons
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# 2. Convert df_merged coordinates to sf object
+coords_sf <- st_as_sf(
+  df_merged[, c("x", "y")], 
+  coords = c("x", "y"), 
+  crs = 4326
+)
+
+# 3. Spatial join: assign ISO country code
+country_match <- st_join(coords_sf, world[c("iso_a3_eh")], join = st_intersects)
+
+# 4. Add country code to df_merged
+df_merged$country_code <- country_match$iso_a3_eh
+
+# 5. Handle missing values (cells not intersecting any country polygon)
+na_mask <- is.na(df_merged$country_code)
+
+if(sum(na_mask) > 0) {
+  # Get centroids of countries
+  country_centroids <- st_centroid(world)
+  country_coords <- st_coordinates(country_centroids)
+  
+  # Get coordinates of unmatched cells
+  na_coords <- as.matrix(df_merged[na_mask, c("x", "y")])
+  
+  # Find nearest country centroid for each NA point
+  nn_idx <- get.knnx(country_coords, na_coords, k = 1)$nn.index[, 1]
+  
+  # Assign closest country code
+  df_merged$country_code[na_mask] <- world$iso_a3_eh[nn_idx]
+}
 ```
 
 SUMMMARY STATISTICS
 
-1) Number and Share of Cells by Class
-
 ```{r}
+library(ggplot2)
+
+# Define labels
 urban_labels <- c("Rural", "Semi-Rural", "Semi-Urban", "Urban")
-urban_counts <- table(df$urban)
-urban_props <- prop.table(urban_counts)
 
-urban_summary <- data.frame(
-  Class = factor(urban_labels, levels = urban_labels),
-  Count = as.numeric(urban_counts),
-  Share = round(100 * as.numeric(urban_props), 2)
-)
+# Create summary table
+urban_summary <- as.data.frame(table(df_merged$urban))
+names(urban_summary) <- c("urban", "count")
+urban_summary$urban <- factor(urban_summary$urban,
+                              levels = 1:4,
+                              labels = urban_labels)
+urban_summary$share <- 100 * urban_summary$count / sum(urban_summary$count)
 
-print(urban_summary)
-```
-
-2) Urban-Rural Distribution
-
-```{r}
-ggplot(urban_summary, aes(x = Class, y = Share, fill = Class)) +
+# Plot
+ggplot(urban_summary, aes(x = urban, y = share, fill = urban)) +
   geom_col() +
-  scale_fill_viridis_d() +
   labs(
-    title = "Global Distribution of Settlement Classes",
-    y = "Share of Land Area (%)", x = NULL
+    title = "Share of Urban Types",
+    x = NULL,
+    y = "Share (%)"
   ) +
   theme_minimal()
 ```
 
 ```{r}
-write.csv(df, "urban_classification.csv", row.names = FALSE)
+library(dplyr)
+library(ggplot2)
+
+# Define labels for urban classes
+urban_labels <- c("Rural", "Semi-Rural", "Semi-Urban", "Urban")
+
+# Calculate mean GDP per urban class
+gdp_by_urban <- df_merged %>%
+  group_by(urban) %>%
+  summarise(mean_gdp = mean(mean_gdp, na.rm = TRUE)) %>%
+  mutate(urban = factor(urban, levels = 1:4, labels = urban_labels))
+
+# Plot
+ggplot(gdp_by_urban, aes(x = urban, y = mean_gdp, fill = urban)) +
+  geom_col() +
+  labs(
+    title = "Mean GDP by Urban Class",
+    x = NULL,
+    y = "Mean GDP"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+write.csv(df, "urban-income.csv", row.names = FALSE)
 ```
 
