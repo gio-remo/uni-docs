@@ -60,16 +60,20 @@ gdp_avg <- as.data.frame(r_gdp_resampled, xy = TRUE, na.rm = TRUE)
 names(gdp_avg)[3] <- "mean_gdp"
 ```
 
+```{r}
+library(ggplot2)
+
+ggplot(gdp_avg, aes(x=x, y=y, fill=mean_gdp)) +
+  geom_raster() +
+  coord_fixed()
+```
+
+
 Let's see the distribution of the average GDP per capita.
 
 Only few outliers (50k observations) at avg_gdp > $125k. >> SIBERIA REMOVED
 
 ```{r}
-library(ggplot2)
-
-# Remove outliers
-gdp_avg <- gdp_avg[gdp_avg$mean_gdp < 125000, ]
-
 # Quartiles
 p <- quantile(gdp_avg$mean_gdp, probs = c(0.25, 0.5, 0.75))
 
@@ -88,6 +92,9 @@ ggplot(gdp_avg, aes(mean_gdp)) +
 Let's split observations in quartiles. In this way, we can later group Net-Migration and Climate data in GDP clusters.
 
 ```{r}
+# Remove outliers
+gdp_avg <- gdp_avg[gdp_avg$mean_gdp < 120000, ]
+
 # Cut into quartiles
 gdp_avg$gdp_quartile <- cut(
   gdp_avg$mean_gdp,
@@ -210,17 +217,17 @@ library(FNN)
 # Get world countries
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
-# Method 1: Direct spatial join (as before)
+# Direct spatial join
 coords_sf <- st_as_sf(
   gdp_avg[, c("x", "y")], 
   coords = c("x", "y"), 
   crs = 4326
 )
 
-country_match <- st_join(coords_sf, world[c("iso_a3")])
+country_match <- st_join(coords_sf, world[c("iso_a3")], join = st_intersects)
 gdp_avg$country_code <- country_match$iso_a3
 
-# Method 2: For NA values (border/water cells), assign nearest country
+# For NA values (border/water cells), assign nearest country
 na_mask <- is.na(gdp_avg$country_code)
 message("Points without country assignment: ", sum(na_mask))
 
@@ -243,5 +250,5 @@ if(sum(na_mask) > 0) {
 Let's export our final dataset in csv.
 
 ```{r}
-write.csv(gdp_avg, "../data/income-gdp-quarter.csv", row.names = FALSE)
+write.csv(gdp_avg, "income-gdp-quarter.csv", row.names = FALSE)
 ```

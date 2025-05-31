@@ -83,11 +83,6 @@ gdp_avg <- as.data.frame(r_gdp_resampled, xy = TRUE, na.rm = TRUE)
 names(gdp_avg)[3] <- "mean_gdp"
 ```
 
-Let’s see the distribution of the average GDP per capita.
-
-Only few outliers (50k observations) at avg_gdp \> \$125k. \>\> SIBERIA
-REMOVED
-
 ``` r
 library(ggplot2)
 ```
@@ -95,9 +90,22 @@ library(ggplot2)
     ## Warning: package 'ggplot2' was built under R version 4.4.3
 
 ``` r
-# Remove outliers
-gdp_avg <- gdp_avg[gdp_avg$mean_gdp < 125000, ]
+ggplot(gdp_avg, aes(x=x, y=y, fill=mean_gdp)) +
+  geom_raster() +
+  coord_fixed()
+```
 
+    ## Warning: Raster pixels are placed at uneven horizontal intervals and will be shifted
+    ## ℹ Consider using `geom_tile()` instead.
+
+![](income-data_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+
+Let’s see the distribution of the average GDP per capita.
+
+Only few outliers (50k observations) at avg_gdp \> \$125k. \>\> SIBERIA
+REMOVED
+
+``` r
 # Quartiles
 p <- quantile(gdp_avg$mean_gdp, probs = c(0.25, 0.5, 0.75))
 
@@ -115,12 +123,15 @@ ggplot(gdp_avg, aes(mean_gdp)) +
 
     ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](income-data_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](income-data_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
 Let’s split observations in quartiles. In this way, we can later group
 Net-Migration and Climate data in GDP clusters.
 
 ``` r
+# Remove outliers
+gdp_avg <- gdp_avg[gdp_avg$mean_gdp < 120000, ]
+
 # Cut into quartiles
 gdp_avg$gdp_quartile <- cut(
   gdp_avg$mean_gdp,
@@ -142,7 +153,7 @@ ggplot(gdp_avg, aes(x=x, y=y, fill=mean_gdp)) +
     ## Warning: Raster pixels are placed at uneven horizontal intervals and will be shifted
     ## ℹ Consider using `geom_tile()` instead.
 
-![](income-data_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+![](income-data_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
 Let’s plot quartiles on the map. It’s visible how using cell-level data,
 instead of country-level, we have within-country variation (and not
@@ -157,7 +168,7 @@ ggplot(gdp_avg, aes(x=x, y=y, fill=gdp_quartile)) +
     ## Warning: Raster pixels are placed at uneven horizontal intervals and will be shifted
     ## ℹ Consider using `geom_tile()` instead.
 
-![](income-data_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+![](income-data_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
 Some Summary Stats
 
@@ -166,7 +177,7 @@ summary(gdp_avg$mean_gdp)
 ```
 
     ##     Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
-    ##    449.2   6264.9  18203.1  23557.0  38083.3 123312.4
+    ##    449.2   6264.9  18203.1  23546.3  38083.3 119918.2
 
 Number of cells: 1,5 mln
 
@@ -178,7 +189,7 @@ Number of cells: 1,5 mln
 length(gdp_avg$mean_gdp)
 ```
 
-    ## [1] 1556394
+    ## [1] 1556226
 
 Number of cell in each income group.
 
@@ -188,7 +199,7 @@ table(gdp_avg$gdp_quartile)
 
     ## 
     ##     Q1     Q2     Q3     Q4 
-    ## 396259 382180 401914 376041
+    ## 402074 401643 405836 346673
 
 Info ORIGINAL raster
 
@@ -242,7 +253,7 @@ ggplot() +
   coord_fixed()
 ```
 
-![](income-data_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+![](income-data_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 Let’s see the VALUEs.
 
@@ -266,7 +277,7 @@ ggplot() +
   coord_fixed()
 ```
 
-![](income-data_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+![](income-data_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
 
 ### Assign Country Code
 
@@ -294,22 +305,22 @@ library(FNN)
 # Get world countries
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
-# Method 1: Direct spatial join (as before)
+# Direct spatial join
 coords_sf <- st_as_sf(
   gdp_avg[, c("x", "y")], 
   coords = c("x", "y"), 
   crs = 4326
 )
 
-country_match <- st_join(coords_sf, world[c("iso_a3")])
+country_match <- st_join(coords_sf, world[c("iso_a3")], join = st_intersects)
 gdp_avg$country_code <- country_match$iso_a3
 
-# Method 2: For NA values (border/water cells), assign nearest country
+# For NA values (border/water cells), assign nearest country
 na_mask <- is.na(gdp_avg$country_code)
 message("Points without country assignment: ", sum(na_mask))
 ```
 
-    ## Points without country assignment: 68540
+    ## Points without country assignment: 68504
 
 ``` r
 if(sum(na_mask) > 0) {
@@ -333,5 +344,5 @@ if(sum(na_mask) > 0) {
 Let’s export our final dataset in csv.
 
 ``` r
-write.csv(gdp_avg, "../data/income-gdp-quarter.csv", row.names = FALSE)
+write.csv(gdp_avg, "income-gdp-quarter.csv", row.names = FALSE)
 ```
