@@ -87,8 +87,6 @@ downscaled <- crop(downscaled, e_no_antarctica)
 
 df <- as.data.frame(downscaled, xy = TRUE, na.rm = TRUE)
 names(df)[3] <- "urban"
-df$x <- round(df$x, 1)
-df$y <- round(df$y, 1)
 
 # Remove rows where urban == 0
 df <- df[df$urban != 0, ]
