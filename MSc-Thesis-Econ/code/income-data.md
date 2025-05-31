@@ -76,15 +76,17 @@ r_gdp_mean <- mean(r_gdp_sel, na.rm = TRUE)
 r_template <- rast(ext(r_gdp_mean), resolution = 0.1, crs = crs(r_gdp_mean))
 
 # Resample to 0.1°
-r_gdp_resampled <- resample(r_gdp_mean, r_template, method = "bilinear")
+r_gdp_resampled <- resample(r_gdp_mean, r_template, method = "average")
 
 # Convert to data.frame
 gdp_avg <- as.data.frame(r_gdp_resampled, xy = TRUE, na.rm = TRUE)
 names(gdp_avg)[3] <- "mean_gdp"
 ```
 
-Let’s see the distribution of the average GDP per capita. Only few
-outliers (50k observations) at avg_gdp \> \$125k.
+Let’s see the distribution of the average GDP per capita.
+
+Only few outliers (50k observations) at avg_gdp \> \$125k. \>\> SIBERIA
+REMOVED
 
 ``` r
 library(ggplot2)
@@ -93,11 +95,11 @@ library(ggplot2)
     ## Warning: package 'ggplot2' was built under R version 4.4.3
 
 ``` r
-# Remove outliers to calculate quantiles
-gdp_avg_clean <- gdp_avg[gdp_avg$mean_gdp < 125000, ]
+# Remove outliers
+gdp_avg <- gdp_avg[gdp_avg$mean_gdp < 125000, ]
 
 # Quartiles
-p <- quantile(gdp_avg_clean$mean_gdp, probs = c(0.25, 0.5, 0.75))
+p <- quantile(gdp_avg$mean_gdp, probs = c(0.25, 0.5, 0.75))
 
 # Histogram
 ggplot(gdp_avg, aes(mean_gdp)) +
@@ -132,16 +134,15 @@ Let’s plot average GDP per capita.
 
 ``` r
 ggplot(gdp_avg, aes(x=x, y=y, fill=mean_gdp)) +
-  geom_tile() +
+  geom_raster() +
   coord_fixed() +
-  scale_fill_viridis_c(name = "GDP per capita", limits = c(0,125000), oob = scales::squish)
+  scale_fill_viridis_c(name = "GDP per capita", limits = c(0,80000), oob = scales::squish)
 ```
+
+    ## Warning: Raster pixels are placed at uneven horizontal intervals and will be shifted
+    ## ℹ Consider using `geom_tile()` instead.
 
 ![](income-data_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
-
-``` r
-#ggsave("test.png", units = "px", width = 2000, height = 1500)
-```
 
 Let’s plot quartiles on the map. It’s visible how using cell-level data,
 instead of country-level, we have within-country variation (and not
@@ -149,9 +150,12 @@ corresponding to regional administrative borders).
 
 ``` r
 ggplot(gdp_avg, aes(x=x, y=y, fill=gdp_quartile)) +
-  geom_tile() +
+  geom_raster() +
   coord_fixed()
 ```
+
+    ## Warning: Raster pixels are placed at uneven horizontal intervals and will be shifted
+    ## ℹ Consider using `geom_tile()` instead.
 
 ![](income-data_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
@@ -162,7 +166,7 @@ summary(gdp_avg$mean_gdp)
 ```
 
     ##     Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
-    ##    449.2   6390.4  19316.2  26655.9  39673.9 132869.7
+    ##    449.2   6264.9  18203.1  23557.0  38083.3 123312.4
 
 Number of cells: 1,5 mln
 
@@ -174,7 +178,7 @@ Number of cells: 1,5 mln
 length(gdp_avg$mean_gdp)
 ```
 
-    ## [1] 1572666
+    ## [1] 1556394
 
 Number of cell in each income group.
 
@@ -184,7 +188,7 @@ table(gdp_avg$gdp_quartile)
 
     ## 
     ##     Q1     Q2     Q3     Q4 
-    ## 389525 376595 376245 430301
+    ## 396259 382180 401914 376041
 
 Info ORIGINAL raster
 
@@ -259,11 +263,72 @@ ggplot() +
   # Resampled
   geom_tile(data = df_resampled, aes(x = x, y = y, fill = mean), alpha = .5, color = "black", linewidth = .5) +
   scale_fill_viridis_c(name = "GDP resampled", option = "viridis", alpha = 0.6) +
-  
   coord_fixed()
 ```
 
 ![](income-data_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+
+### Assign Country Code
+
+Before exporting, let’s add country code to each cell.
+
+``` r
+library(rnaturalearth)
+```
+
+    ## Warning: package 'rnaturalearth' was built under R version 4.4.3
+
+``` r
+library(sf)
+```
+
+    ## Linking to GEOS 3.12.2, GDAL 3.9.3, PROJ 9.4.1; sf_use_s2() is TRUE
+
+``` r
+library(FNN)
+```
+
+    ## Warning: package 'FNN' was built under R version 4.4.3
+
+``` r
+# Get world countries
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+# Method 1: Direct spatial join (as before)
+coords_sf <- st_as_sf(
+  gdp_avg[, c("x", "y")], 
+  coords = c("x", "y"), 
+  crs = 4326
+)
+
+country_match <- st_join(coords_sf, world[c("iso_a3")])
+gdp_avg$country_code <- country_match$iso_a3
+
+# Method 2: For NA values (border/water cells), assign nearest country
+na_mask <- is.na(gdp_avg$country_code)
+message("Points without country assignment: ", sum(na_mask))
+```
+
+    ## Points without country assignment: 68540
+
+``` r
+if(sum(na_mask) > 0) {
+  # Get country centroids for nearest neighbor matching
+  country_centroids <- st_centroid(world)
+  country_coords <- st_coordinates(country_centroids)
+  
+  # Get coordinates of NA points
+  na_coords <- as.matrix(gdp_avg[na_mask, c("x", "y")])
+  
+  # Find nearest country for each NA point
+  nn_idx <- get.knnx(country_coords, na_coords, k = 1)$nn.index[, 1]
+  
+  # Assign nearest country codes to NA values
+  gdp_avg$country_code[na_mask] <- world$iso_a3[nn_idx]
+}
+```
+
+    ## Warning: st_centroid assumes attributes are constant over geometries
 
 Let’s export our final dataset in csv.
 
