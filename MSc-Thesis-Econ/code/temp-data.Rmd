@@ -13,7 +13,7 @@ For temperature data, I use the ERA5-Land dataset from Copernicus. It provides "
 
 Net-Migration and GDP data have a resolution of 0.083°. I downscale them to a coarser resolution of 0.1° to match them with climate data.
 
-```{r}
+```{r, eval=FALSE}
 library(ncdf4)
 library(terra)
 
@@ -116,6 +116,51 @@ colnames(df) <- c("x", "y", "temp_2000", "temp_2019", "avg_temp")
 df$temp_diff <- df$temp_2019 - df$avg_temp # Temp. diff. between last year and long run avg
 
 write.csv(df, "temperature_summary.csv", row.names = FALSE)
+writeRaster(yearly_rasters, "temperature_resampled_average.tif")
+```
+
+```{r}
+library(terra)
+library(dplyr)
+library(tidyr)
+
+# Read raster (20 layers: one per year)
+r <- rast("temperature_resampled_average.tif")
+years <- 2000:2019
+names(r) <- as.character(years)
+
+# Extract all values and coordinates
+vals <- values(r)               # matrix: n_cells x 20 years
+coords <- crds(r, na.rm=FALSE)  # matrix: n_cells x 2
+
+# Create a data frame
+df <- as.data.frame(vals)
+colnames(df) <- as.character(years)
+df$x <- coords[, 1]
+df$y <- coords[, 2]
+
+# Remove rows that are NA across all years
+df <- df[rowSums(is.na(df[as.character(years)])) < length(years), ]
+
+# Compute average temperature for each cell
+df$avg_temp <- rowMeans(df[as.character(years)], na.rm = TRUE)
+
+# Pivot to long format with one row per year per cell
+df_long <- df %>%
+  pivot_longer(
+    cols = all_of(as.character(years)),
+    names_to = "year",
+    values_to = "temperature"
+  ) %>%
+  mutate(
+    year = as.integer(year),
+    diff_from_avg = temperature - avg_temp
+  ) %>%
+  select(x, y, year, temperature, avg_temp, diff_from_avg) %>%
+  arrange(x, y, year)
+
+# Export to CSV
+#write.csv(df_long, "temperature_panel.csv", row.names = FALSE)
 ```
 
 
@@ -162,6 +207,8 @@ ggplot() +
 
 
 ```{r}
+df$temp_diff <- df$`2019` - df$avg_temp
+
 ggplot() + 
   geom_raster(data = df, mapping = aes(x = x, y = y, fill = temp_diff)) +
   coord_fixed() +
@@ -202,110 +249,12 @@ Distribution of temperature in 2000 vs. 2019. The 2019 distribution is clearly s
 
 ```{r}
 ggplot() +
-  geom_histogram(data = df, aes(x = temp_2000), 
+  geom_histogram(data = df, aes(x = `2000`), 
                  fill = "steelblue", alpha = 0.5, bins = 100) +
-  geom_histogram(data = df, aes(x = temp_2019), 
+  geom_histogram(data = df, aes(x = `2019`), 
                  fill = "tomato", alpha = 0.5, bins = 100) +
   labs(x = "Temperature (°C)", y = "Count", title = "Histogram of Temperatures: 2000 vs 2019") +
   scale_x_continuous(limits = c(-35, 35), breaks = seq(-35, 35, 5)) +
   guides(fill = guide_legend(title = "Year"))
 ```
 
-
-### Merge Temp to Income Quartile
-
-1) RESHAPING TEMP TO LONG
-
-```{r}
-library(data.table)
-
-# Assign year names to the layers
-names(yearly_rasters) <- 2000:2019
-
-# Get coordinates of all raster cells
-coords <- crds(yearly_rasters, na.rm = FALSE)  # matrix [n_cells, 2], columns: x, y
-
-# Get temperature values for each cell and year
-temp_vals <- as.matrix(yearly_rasters)  # matrix [n_cells, 20]
-
-# Create base table
-dt <- data.table(
-  x = coords[, 1],
-  y = coords[, 2]
-)
-
-# Add temperature values
-dt_temp <- as.data.table(temp_vals)
-dt <- cbind(dt, dt_temp)
-
-# To long format: one row per cell-year
-dt_long <- melt(
-  dt,
-  id.vars = c("x", "y"),
-  variable.name = "year",
-  value.name = "temp"
-)
-
-# Remove NAs
-dt_long <- dt_long[!is.na(dt_long$temp),]
-```
-
-2) SPATIAL MERGE
-
-```{r}
-library(FNN)
-
-gdp <- read.csv("income-gdp-quarter.csv")
-
-# Extract coordinates for temp
-temp_coords <- as.matrix(dt_long[, .(x, y)])
-
-# Extract coordinates for gdp
-gdp_coords <- as.matrix(gdp[, c("x", "y")])
-
-# Find index of nearest
-nn_idx <- get.knnx(gdp_coords, temp_coords, k = 1)$nn.index[, 1]
-
-# Merge
-dt_long[, income_q := gdp$gdp_quartile[nn_idx]]
-```
-
-```{r}
-library(gt)
-library(dplyr)
-
-# Summary Statistics
-summary_stats <- function(data, variable) {
-  q <- quantile(data[[deparse(substitute(variable))]], probs = c(0.25, 0.75), na.rm = TRUE)
-  data %>%
-    summarize(
-      Obs. = n(),
-      Mean = mean({{ variable }}, na.rm = TRUE),
-      `St. dev.` = sd({{ variable }}, na.rm = TRUE),
-      `25th` = q[1],
-      `75th` = q[2]
-    )
-}
-
-# Summary for full sample
-summary_temp_full_sample <- summary_stats(dt_long, temp) %>%
-  mutate(Group = "Full sample")
-
-# Summary by GDP group
-summary_temp_by_group <- dt_long %>%
-  group_by(income_q) %>%
-  # Apply function to each group
-  group_modify(~summary_stats(.x, temp)) %>%
-  rename(Group = income_q)
-
-# Combine in one table
-summary_table_temp <- bind_rows(summary_temp_full_sample, summary_temp_by_group) %>%
-  select(Group, Obs., Mean, `St. dev.`, `25th`, `75th`)
-
-# Print nice table
-gt(summary_table_temp) %>% 
-  fmt_number(columns = "Obs.", use_seps = TRUE, decimals = 0) %>% 
-  fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
-  tab_options(table.width = pct(80)) %>% 
-  tab_header(title = "Temp")
-```

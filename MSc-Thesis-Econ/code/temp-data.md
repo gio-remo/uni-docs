@@ -17,13 +17,7 @@ to a coarser resolution of 0.1° to match them with climate data.
 ``` r
 library(ncdf4)
 library(terra)
-```
 
-    ## Warning: package 'terra' was built under R version 4.4.3
-
-    ## terra 1.8.29
-
-``` r
 # 1) Load data
 
 filename <- "../data/2m_temperature.nc"
@@ -50,13 +44,7 @@ nc_close(nc)
 rm(nc) # free memory
 rm(temp_k) # free memory
 gc() # free memory
-```
 
-    ##              used    (Mb) gc trigger    (Mb)   max used    (Mb)
-    ## Ncells    1254487    67.0    2161441   115.5    2161441   115.5
-    ## Vcells 1557836392 11885.4 4486616787 34230.2 3113981579 23757.8
-
-``` r
 # 2) Create rasters and compute year average
 
 dir.create("temp_year_rasters", showWarnings = FALSE) # Create folder
@@ -98,301 +86,12 @@ for (j in seq_along(years_unique)) {
   rm(month_rasters) # free memory
   gc() # free memory
 }
-```
 
-    ## [1] "2000"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2000 - Mean temp (°C): 8.27 
-    ## [1] "2001"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2001 - Mean temp (°C): 8.53 
-    ## [1] "2002"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2002 - Mean temp (°C): 8.66 
-    ## [1] "2003"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2003 - Mean temp (°C): 8.75 
-    ## [1] "2004"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2004 - Mean temp (°C): 8.48 
-    ## [1] "2005"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2005 - Mean temp (°C): 9.02 
-    ## [1] "2006"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2006 - Mean temp (°C): 8.85 
-    ## [1] "2007"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2007 - Mean temp (°C): 9.02 
-    ## [1] "2008"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2008 - Mean temp (°C): 8.76 
-    ## [1] "2009"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2009 - Mean temp (°C): 8.63 
-    ## [1] "2010"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2010 - Mean temp (°C): 9.07 
-    ## [1] "2011"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2011 - Mean temp (°C): 8.76 
-    ## [1] "2012"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2012 - Mean temp (°C): 8.89 
-    ## [1] "2013"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2013 - Mean temp (°C): 8.81 
-    ## [1] "2014"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2014 - Mean temp (°C): 8.84 
-    ## [1] "2015"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2015 - Mean temp (°C): 9.18 
-    ## [1] "2016"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2016 - Mean temp (°C): 9.5 
-    ## [1] "2017"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2017 - Mean temp (°C): 9.3 
-    ## [1] "2018"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2018 - Mean temp (°C): 9.04 
-    ## [1] "2019"
-    ## [1] 1
-    ## [1] 2
-    ## [1] 3
-    ## [1] 4
-    ## [1] 5
-    ## [1] 6
-    ## [1] 7
-    ## [1] 8
-    ## [1] 9
-    ## [1] 10
-    ## [1] 11
-    ## [1] 12
-    ## Year: 2019 - Mean temp (°C): 9.41
-
-``` r
 rm(temp_c)
 rm(r)
 rm(yearly_raster)
 gc()
-```
 
-    ##           used (Mb) gc trigger    (Mb)   max used    (Mb)
-    ## Ncells 1266871 67.7    2161441   115.5    2161441   115.5
-    ## Vcells 1805321 13.8 3589293430 27384.2 3113981579 23757.8
-
-``` r
 # 3) Yearly rasters
 
 yearly_files <- list.files("temp_year_rasters", pattern = "\\.tif$", full.names = TRUE)
@@ -416,10 +115,91 @@ df <- merge(df_2000, df_2019, by = c("x", "y"), suffixes = c("_2000", "_2019"))
 df <- merge(df, df_avg, by = c("x", "y"))
 colnames(df) <- c("x", "y", "temp_2000", "temp_2019", "avg_temp")
 df$temp_diff <- df$temp_2019 - df$avg_temp # Temp. diff. between last year and long run avg
-df$x <- round(df$x, 1)
-df$y <- round(df$y, 1)
 
 write.csv(df, "temperature_summary.csv", row.names = FALSE)
+writeRaster(yearly_rasters, "temperature_resampled_average.tif")
+```
+
+``` r
+library(terra)
+```
+
+    ## Warning: package 'terra' was built under R version 4.4.3
+
+    ## terra 1.8.29
+
+``` r
+library(dplyr)
+```
+
+    ## Warning: package 'dplyr' was built under R version 4.4.3
+
+    ## 
+    ## Attaching package: 'dplyr'
+
+    ## The following objects are masked from 'package:terra':
+    ## 
+    ##     intersect, union
+
+    ## The following objects are masked from 'package:stats':
+    ## 
+    ##     filter, lag
+
+    ## The following objects are masked from 'package:base':
+    ## 
+    ##     intersect, setdiff, setequal, union
+
+``` r
+library(tidyr)
+```
+
+    ## Warning: package 'tidyr' was built under R version 4.4.3
+
+    ## 
+    ## Attaching package: 'tidyr'
+
+    ## The following object is masked from 'package:terra':
+    ## 
+    ##     extract
+
+``` r
+# Read raster (20 layers: one per year)
+r <- rast("temperature_resampled_average.tif")
+years <- 2000:2019
+names(r) <- as.character(years)
+
+# Extract all values and coordinates
+vals <- values(r)               # matrix: n_cells x 20 years
+coords <- crds(r, na.rm=FALSE)  # matrix: n_cells x 2
+
+# Create a data frame
+df <- as.data.frame(vals)
+colnames(df) <- as.character(years)
+df$x <- coords[, 1]
+df$y <- coords[, 2]
+
+# Remove rows that are NA across all years
+df <- df[rowSums(is.na(df[as.character(years)])) < length(years), ]
+
+# Compute average temperature for each cell
+df$avg_temp <- rowMeans(df[as.character(years)], na.rm = TRUE)
+
+# Pivot to long format with one row per year per cell
+df_long <- df %>%
+  pivot_longer(
+    cols = all_of(as.character(years)),
+    names_to = "year",
+    values_to = "temperature"
+  ) %>%
+  mutate(
+    year = as.integer(year),
+    diff_from_avg = temperature - avg_temp
+  ) %>%
+  select(x, y, year, temperature, avg_temp, diff_from_avg) %>%
+  arrange(x, y, year)
+
+# Export to CSV
+#write.csv(df_long, "temperature_panel.csv", row.names = FALSE)
 ```
 
 ``` r
@@ -436,7 +216,7 @@ ggplot() +
   ggtitle("All-time Avg Temp 2000-2019")
 ```
 
-![](temp-data_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+![](temp-data_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
 Summary Stats for Long Run Temperature average
 
@@ -475,9 +255,11 @@ ggplot() +
     ## Warning: Removed 2 rows containing missing values or values outside the scale range
     ## (`geom_bar()`).
 
-![](temp-data_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+![](temp-data_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
 ``` r
+df$temp_diff <- df$`2019` - df$avg_temp
+
 ggplot() + 
   geom_raster(data = df, mapping = aes(x = x, y = y, fill = temp_diff)) +
   coord_fixed() +
@@ -485,7 +267,7 @@ ggplot() +
   ggtitle("Temperature Difference between 2019 and Long-Run Avg")
 ```
 
-![](temp-data_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+![](temp-data_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
 Distribution of the temperature difference between 2019 and the long-run
 average. The mean difference is +0.5°C, indicating a general warming.
@@ -523,41 +305,6 @@ ggplot() +
   ggtitle("Histogram for Temperature Difference 2019-Avg")
 ```
 
-![](temp-data_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
-
-``` r
-library(patchwork)
-```
-
-    ## Warning: package 'patchwork' was built under R version 4.4.3
-
-    ## 
-    ## Attaching package: 'patchwork'
-
-    ## The following object is masked from 'package:terra':
-    ## 
-    ##     area
-
-``` r
-# Compute common limits
-temp_min <- min(df$temp_2000, df$temp_2019, na.rm = TRUE)
-temp_max <- max(df$temp_2000, df$temp_2019, na.rm = TRUE)
-
-p1 <- ggplot() + 
-  geom_raster(data = df, mapping = aes(x = x, y = y, fill = temp_2000)) +
-  coord_fixed() +
-  scale_fill_viridis_c(name = "°C", limits = c(temp_min, temp_max)) +
-  ggtitle("Avg Temp 2000")
-
-p2 <- ggplot() + 
-  geom_raster(data = df, mapping = aes(x = x, y = y, fill = temp_2019)) +
-  coord_fixed() +
-  scale_fill_viridis_c(name = "°C", limits = c(temp_min, temp_max)) +
-  ggtitle("Avg Temp 2019")
-
-p1 + p2 + plot_layout(ncol = 1)
-```
-
 ![](temp-data_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 Distribution of temperature in 2000 vs. 2019. The 2019 distribution is
@@ -567,9 +314,9 @@ may reflect anomalous conditions and should be interpreted with caution.
 
 ``` r
 ggplot() +
-  geom_histogram(data = df, aes(x = temp_2000), 
+  geom_histogram(data = df, aes(x = `2000`), 
                  fill = "steelblue", alpha = 0.5, bins = 100) +
-  geom_histogram(data = df, aes(x = temp_2019), 
+  geom_histogram(data = df, aes(x = `2019`), 
                  fill = "tomato", alpha = 0.5, bins = 100) +
   labs(x = "Temperature (°C)", y = "Count", title = "Histogram of Temperatures: 2000 vs 2019") +
   scale_x_continuous(limits = c(-35, 35), breaks = seq(-35, 35, 5)) +

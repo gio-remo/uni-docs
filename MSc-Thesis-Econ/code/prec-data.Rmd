@@ -17,7 +17,7 @@ Unit measure: meters.
 
 In addition to the others preparatory steps, I need to compute the "cumulated total precipitation" of each year. Making the average over a year of the monthly precipitations is not useful to represent the area.
 
-```{r}
+```{r, eval=TRUE}
 library(ncdf4)
 library(terra)
 library(ggplot2)
@@ -116,6 +116,51 @@ colnames(df) <- c("x", "y", "tp_2000", "tp_2019", "avg_tp")
 df$prec_diff <- df$tp_2019 - df$avg_tp
 
 write.csv(df, "total_precipitation_summary.csv", row.names = FALSE)
+writeRaster(yearly_rasters, "precipitation_resampled_average.tif")
+```
+
+
+```{r}
+library(terra)
+library(dplyr)
+library(tidyr)
+
+# Read raster
+r <- rast("precipitation_resampled_average.tif")
+years <- 2000:2019
+names(r) <- as.character(years)
+
+# Extract all values and coordinates
+vals <- values(r)               # matrix: n_cells x 20 years
+coords <- crds(r, na.rm=FALSE)  # matrix: n_cells x 2
+
+# Create a data frame
+df <- as.data.frame(vals)
+colnames(df) <- as.character(years)
+df$x <- coords[, 1]
+df$y <- coords[, 2]
+
+# Remove rows that are NA across all years
+df <- df[rowSums(is.na(df[as.character(years)])) < length(years), ]
+
+# Compute average for each cell
+df$avg_tp <- rowMeans(df[as.character(years)], na.rm = TRUE)
+
+# Pivot to long format with one row per year per cell
+df_long <- df %>%
+  pivot_longer(
+    cols = all_of(as.character(years)),
+    names_to = "year",
+    values_to = "tp"
+  ) %>%
+  mutate(
+    year = as.integer(year)
+  ) %>%
+  select(x, y, year, tp, avg_tp) %>%
+  arrange(x, y, year)
+
+# Export to CSV
+write.csv(df_long, "precipitation_panel.csv", row.names = FALSE)
 ```
 
 Summary Stats for Long Run Total Precipitation

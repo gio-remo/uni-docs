@@ -21,6 +21,8 @@ Let's import the dataset produced by Niva (2023):
 - Yearly 2000-2019 (20 years)
 - High-resolution, 5 arc-min / 0.083° https://www.inchcalculator.com/convert/degree-to-arcminute/
 
+How the authors calculate the Net-Migration rate: https://github.com/mattikummu/global_net_migration/blob/main/3_net_migration_setup/1_net_migration_setup.R
+
 **RESAMPLING**! Climate data have resolution of 6 arcmin (0.1°). Therefore I need to resample migration data from 5 arcmin (0.083°) to 6 arcmin.
 
 ```{r}
@@ -28,6 +30,7 @@ library(terra)
 library(tidyr)
 library(ggplot2)
 library(dplyr)
+library(data.table)
 
 # Import Net-Migration data, 2000-2019 yearly (20 layers)
 filepath_raster_netMgr_2000_2019_annual <- "../data/raster_netMgr_2000_2019_annual.tif"
@@ -67,7 +70,7 @@ It's time to merge Income and Net-Migration data.
 library(FNN)
 library(geosphere)  # for accurate geographic distances
 
-income_urban <- read.csv("urban-income.csv")
+income_urban <- fread("urban-income.csv")
 
 # Extract coordinates
 coords1 <- as.matrix(df_netMgr_2000_2019_annual[, c("x", "y")])
@@ -78,7 +81,7 @@ nn_result <- get.knnx(coords2, coords1, k = 1)
 nn_idx <- nn_result$nn.index
 nn_dist <- nn_result$nn.dist
 
-# Distances in meters using geodesic method
+# Distances in meters
 distances <- distGeo(coords1, coords2[nn_idx, ])
 
 # Combine results
@@ -88,7 +91,7 @@ df_merged <- cbind(
   distance_m = distances
 )
 
-# Optional: Filter to max distance
+# Filter to max distance
 df_merged <- df_merged[df_merged$distance_m <= 5000, ]
 df_merged <- df_merged[, !duplicated(names(df_merged))]
 df_merged$distance_m <- NULL
@@ -97,46 +100,60 @@ df_merged$distance_m <- NULL
 ### Merge with Temperature
 
 ```{r}
-temperature <- read.csv("temperature_summary.csv")
+temperature <- fread("temperature_panel.csv")
+
+# Transform to wide format with custom column names
+temperature_wide <- temperature %>%
+  pivot_wider(
+    id_cols = c(x, y),
+    names_from = year,
+    values_from = c(temperature, avg_temp, diff_from_avg),
+    names_sep = "_"
+  ) %>%
+  # Rename columns
+  rename_with(~ gsub("temperature_", "temp_", .x)) %>%
+  rename_with(~ gsub("avg_temp_", "avg_temp_", .x)) %>%
+  rename_with(~ gsub("diff_from_avg_", "diff_from_avg_", .x)) # From 30mln (long) to 1,5mln (wide) rows
 
 # Extract coordinates
 coords1 <- as.matrix(df_merged[, c("x", "y")])
-coords2 <- as.matrix(temperature[, c("x", "y")])
+coords2 <- as.matrix(temperature_wide[, c("x", "y")])
 
 # Nearest neighbor indices
 nn_result <- get.knnx(coords2, coords1, k = 1)
 nn_idx <- nn_result$nn.index
 nn_dist <- nn_result$nn.dist
 
-# Distances in meters using geodesic method
-distances <- distGeo(coords1, coords2[nn_idx, ])
-
 # Combine results
 df_merged_temp <- cbind(
   df_merged,
-  temperature[nn_idx, ],
+  temperature_wide[nn_idx, ],
   distance_m = nn_dist
 )
 
-# Optional: Filter to max distance
+# Filter to max distance
 df_merged_temp <- df_merged_temp[df_merged_temp$distance_m <= .5, ]
 df_merged_temp <- df_merged_temp[, !duplicated(names(df_merged_temp))]
 df_merged_temp$distance_m <- NULL
-
-ggplot(df_merged_temp) +
-  geom_raster(aes(x = x, y = y, fill = avg_temp)) +
-  coord_fixed() +
-  scale_fill_viridis_c()
 ```
 
 ### Merge with Precipitation
 
 ```{r}
-precipitation <- read.csv("total_precipitation_summary.csv")
+precipitation <- fread("precipitation_panel.csv")
+
+# Transform to wide format with custom column names
+precipitation_wide <- precipitation %>%
+  pivot_wider(
+    id_cols = c(x, y),
+    names_from = year,
+    values_from = c(tp, avg_tp),
+    names_sep = "_"
+  )
 
 # Extract coordinates
 coords1 <- as.matrix(df_merged_temp[, c("x", "y")])
-coords2 <- as.matrix(precipitation[, c("x", "y")])
+coords2 <- as.matrix(precipitation_wide[, c("x", "y")])
 
 # Nearest neighbor indices
 nn_result <- get.knnx(coords2, coords1, k = 1)
@@ -144,12 +161,12 @@ nn_idx <- nn_result$nn.index
 nn_dist <- nn_result$nn.dist
 
 # Distances in meters using geodesic method
-distances <- distGeo(coords1, coords2[nn_idx, ])
+#distances <- distGeo(coords1, coords2[nn_idx, ])
 
 # Combine results
 df_merged_final <- cbind(
   df_merged_temp,
-  precipitation[nn_idx, ],
+  precipitation_wide[nn_idx, ],
   distance_m = nn_dist
 )
 
@@ -157,37 +174,96 @@ df_merged_final <- cbind(
 df_merged_final <- df_merged_final[df_merged_final$distance_m <= .5, ]
 df_merged_final <- df_merged_final[, !duplicated(names(df_merged_final))]
 df_merged_final$distance_m <- NULL
-
-ggplot(df_merged_final) +
-  geom_raster(aes(x = x, y = y, fill = avg_tp)) +
-  coord_fixed() +
-  scale_fill_viridis_c()
 ```
 
-Now we can start working on the dataset.
+```{r}
+rm(precipitation)
+rm(precipitation_wide)
+rm(temperature)
+rm(temperature_wide)
+rm(df_netMgr_2000_2019_annual)
+rm(r_original)
+rm(r_resampled)
+rm(r_template)
+rm(income_urban)
+rm(df_merged)
+rm(df_merged_temp)
+rm(coords1)
+rm(coords2)
+rm(nn_dist)
+rm(nn_idx)
+rm(nn_result)
+rm(distances)
+gc()
+```
+
+From wide to long!
 
 ```{r}
-years <- as.character(2000:2019)
+library(dplyr)
+library(tidyr)
 
-df_netMgr_2000_2019_annual_long <- df_merged_final %>%
+# Reshape the dataset to long format
+df_long <- df_merged_final %>%
   pivot_longer(
-    cols = all_of(years),      # only pivot year columns
+    cols = `2000`:`2019`,
     names_to = "year",
-    values_to = "netmgr"
-  ) # 28 mln obs
+    values_to = "migration"
+  ) %>%
+  mutate(
+    # temp
+    temp = df_merged_final %>%
+      select(starts_with("temp_")) %>%
+      pivot_longer(cols = everything(), names_to = "year", values_to = "temp") %>%
+      mutate(year = gsub("temp_", "", year)) %>%
+      pull(temp),
+    
+    # avg_temp
+    avg_temp = df_merged_final %>%
+      select(starts_with("avg_temp_")) %>%
+      pivot_longer(cols = everything(), names_to = "year", values_to = "avg_temp") %>%
+      mutate(year = gsub("avg_temp_", "", year)) %>%
+      pull(avg_temp),
 
-summary(df_netMgr_2000_2019_annual_long$netmgr)
+    # diff_from_avg_temp
+    diff_from_avg_temp = df_merged_final %>%
+      select(starts_with("diff_from_avg_")) %>%
+      pivot_longer(cols = everything(), names_to = "year", values_to = "diff_from_avg_temp") %>%
+      mutate(year = gsub("diff_from_avg_", "", year)) %>%
+      pull(diff_from_avg_temp),
+
+    # tp
+    tp = df_merged_final %>%
+      select(starts_with("tp_")) %>%
+      pivot_longer(cols = everything(), names_to = "year", values_to = "tp") %>%
+      mutate(year = gsub("tp_", "", year)) %>%
+      pull(tp),
+
+    # avg_tp
+    avg_tp = df_merged_final %>%
+      select(starts_with("avg_tp_")) %>%
+      pivot_longer(cols = everything(), names_to = "year", values_to = "avg_tp") %>%
+      mutate(year = gsub("avg_tp_", "", year)) %>%
+      pull(avg_tp)
+  ) %>%
+  mutate(year = as.integer(year)) %>%
+  select(-matches("^(\\d{4}$|temp_\\d{4}$|avg_temp_\\d{4}$|diff_from_avg_\\d{4}$|tp_\\d{4}$|avg_tp_\\d{4}$)"))
+
+fwrite(df_long, "all_panel_data.csv", row.names = FALSE)
+
+rm(df_merged_final)
+gc()
 ```
 
 NAs/0 values to remove
 
 ```{r}
-df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr == 0, ] # 2,7 mln obs
+df_long[df_long$migration == 0, ] # 2,7 mln obs
 ```
 
 ```{r}
-zeros_by_location <- df_netMgr_2000_2019_annual_long %>%
-  filter(year == 2000 & netmgr == 0) # 130k obs
+zeros_by_location <- df_long %>%
+  filter(year == 2000 & migration == 0) # 140k obs
 
 ggplot(zeros_by_location, aes(x = x, y = y, fill = "red")) +
   geom_raster() +
@@ -203,40 +279,40 @@ Therefore, let's remove observations with 0.
 
 ```{r}
 # Remove 0s
-df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr != 0,] # 25mln obs
+df_long <- df_long[df_long$migration != 0,] # From 28mln to 25,2mln obs
 
-summary(df_netMgr_2000_2019_annual_long$netmgr)
+summary(df_long$migration)
 ```
 
 Let's proceed cleaning our dataset, it's time for outliers. I remove outliers at 0.005 and 0.995 percentiles.
 
 ```{r}
-p <- quantile(df_netMgr_2000_2019_annual_long$netmgr, probs = c(0.005, 0.995))
+p <- quantile(df_long$migration, probs = c(0.005, 0.995))
 
 # Filter out outliers (1st, 99th percentile)
-df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[
-  df_netMgr_2000_2019_annual_long$netmgr >= p[1] &
-  df_netMgr_2000_2019_annual_long$netmgr <= p[2], ] # From 25,2mln to 24,9mln obs
+df_long <- df_long[
+  df_long$migration >= p[1] &
+  df_long$migration <= p[2], ] # From 25,2mln to 25mln obs
 
-summary(df_netMgr_2000_2019_annual_long$netmgr)
+summary(df_long$migration)
 ```
 
 Let's plot them together INCOME and MIGRATION
 
 ```{r}
 # Net-Migration data for 1 year, to be able to plot
-netmgr_1y <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$year == 2000,] # 1,2mln obs
+oneyear <- df_long[df_long$year == 2000,] # 1,2mln obs
 
 library(patchwork)
 
-p1 <- ggplot(netmgr_1y) +
+p1 <- ggplot(oneyear) +
   geom_raster(aes(x = x, y = y, fill = mean_gdp)) +
   coord_fixed() +
   scale_fill_viridis_c(name = "GDP per capita")
 
 
-p2 <- ggplot(netmgr_1y) + 
-  geom_raster(aes(x = x, y = y, fill = netmgr)) +
+p2 <- ggplot(oneyear) + 
+  geom_raster(aes(x = x, y = y, fill = migration)) +
   coord_fixed() +
   scale_fill_viridis_b(name = "Net-Migr/1000pp", limits = c(-50, 50), breaks = seq(-50, 50, 25))
 
@@ -256,22 +332,22 @@ First, let's subset our global dataset and select a small area, north-east Italy
 
 ```{r}
 # Subset the area of interest
-netmgr_subset <- filter_continent(df_netMgr_2000_2019_annual_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
+region <- filter_continent(df_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
 
 p3 <- ggplot() +
-  geom_tile(data = netmgr_subset, aes(x = x, y = y, fill = mean_gdp)) +
+  geom_tile(data = region, aes(x = x, y = y, fill = migration)) +
   coord_fixed() +
   scale_fill_viridis_c(name = "Avg GDP", option = "magma", alpha = 1)
 
 p4 <- ggplot() +
-  geom_tile(data = netmgr_subset, aes(x = x, y = y, fill = netmgr)) +
+  geom_tile(data = region, aes(x = x, y = y, fill = migration)) +
   coord_fixed() +
   scale_fill_viridis_c(name = "Net-Migration/1000pp", option = "viridis")
 
 p3 + p4 + plot_layout(ncol = 1)
 ```
 
-### Merge with Population
+### Merge with Population // outdated
 
 ```{r, eval=FALSE}
 # Fast Nearest Neighbor
@@ -317,9 +393,9 @@ These are RATIOs. In a region with a population of 100,000:
 
 
 ```{r}
-pp <- quantile(df_netMgr_2000_2019_annual_long$netmgr, probs = c(0.25, 0.5, 0.75))
+pp <- quantile(df_long$migration, probs = c(0.25, 0.5, 0.75))
 
-ggplot(data = df_netMgr_2000_2019_annual_long, aes(netmgr)) +
+ggplot(data = df_long, aes(migration)) +
   geom_histogram(binwidth = 0.01) +
   xlim(-4, 4) +
     geom_vline(xintercept = pp[1], color="red", alpha=0.5, linetype="dotted") +
@@ -334,13 +410,13 @@ ggplot(data = df_netMgr_2000_2019_annual_long, aes(netmgr)) +
 Single observations (cell, year) with POSITIVE Net-Migration = 12 mln
 
 ```{r}
-df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr > 0, ]
+df_long[df_long$migration > 0, ]
 ```
 
 Single observations (cell, year) with NEGATIVE Net-Migration = 12,9 mln
 
 ```{r}
-df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr < 0, ]
+df_long[df_long$migration < 0, ]
 ```
 
 
@@ -366,15 +442,15 @@ summary_stats <- function(data, variable) {
 }
 
 # For full sample: make Group character explicitly
-summary_migr_full_sample <- summary_stats(df_netMgr_2000_2019_annual_long, netmgr) %>%
+summary_migr_full_sample <- summary_stats(df_long, migration) %>%
   mutate(Group = "Full sample")
 
 # For group summaries: convert Group to character after rename
-summary_migr_by_group <- df_netMgr_2000_2019_annual_long %>%
+summary_migr_by_group <- df_long %>%
   group_by(gdp_quartile) %>%
-  group_modify(~ summary_stats(.x, netmgr)) %>%
+  group_modify(~ summary_stats(.x, migration)) %>%
   rename(Group = gdp_quartile) %>%
-  mutate(Group = as.character(Group))  # <-- important
+  mutate(Group = as.character(Group))
 
 # Now bind_rows will work without error
 summary_table_migr <- bind_rows(summary_migr_full_sample, summary_migr_by_group) %>%
@@ -385,25 +461,25 @@ gt(summary_table_migr) %>%
   fmt_number(columns = "Obs", use_seps = TRUE, decimals = 0) %>% 
   fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
   tab_options(table.width = pct(80)) %>% 
-  tab_header(title = "Net migration rates") %>% 
-  gtsave("table_netmigration.png")
+  tab_header(title = "Net migration rates (/1000 people)")
+  #gtsave("table_netmigration.png")
 ```
 
 TABLE BY INCOME QUARTERS FOR TEMPERATURE
 
 ```{r}
-one_year <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$year == 2000, ]
+oneyear <- df_long[df_long$year == 2000, ]
 
 # For full sample: make Group character explicitly
-summary_temp_full_sample <- summary_stats(one_year, avg_temp) %>%
+summary_temp_full_sample <- summary_stats(oneyear, avg_temp) %>%
   mutate(Group = "Full sample")
 
 # For group summaries: convert Group to character after rename
-summary_temp_by_group <- one_year %>%
+summary_temp_by_group <- oneyear %>%
   group_by(gdp_quartile) %>%
   group_modify(~ summary_stats(.x, avg_temp)) %>%
   rename(Group = gdp_quartile) %>%
-  mutate(Group = as.character(Group))  # <-- important
+  mutate(Group = as.character(Group))
 
 # Now bind_rows will work without error
 summary_table_temp <- bind_rows(summary_temp_full_sample, summary_temp_by_group) %>%
@@ -414,19 +490,19 @@ gt(summary_table_temp) %>%
   fmt_number(columns = "Obs", use_seps = TRUE, decimals = 0) %>% 
   fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
   tab_options(table.width = pct(80)) %>% 
-  tab_header(title = "Temperature") %>% 
-  gtsave("table_temperature.png")
+  tab_header(title = "Temperature (°C)")
+  #gtsave("table_temperature.png")
 ```
 
 TABLE BY INCOME QUARTERS FOR PRECIPITATIONS
 
 ```{r}
 # For full sample: make Group character explicitly
-summary_prec_full_sample <- summary_stats(one_year, avg_tp) %>%
+summary_prec_full_sample <- summary_stats(oneyear, avg_tp) %>%
   mutate(Group = "Full sample")
 
 # For group summaries: convert Group to character after rename
-summary_prec_by_group <- one_year %>%
+summary_prec_by_group <- oneyear %>%
   group_by(gdp_quartile) %>%
   group_modify(~ summary_stats(.x, avg_tp)) %>%
   rename(Group = gdp_quartile) %>%
@@ -439,8 +515,133 @@ summary_table_prec <- bind_rows(summary_prec_full_sample, summary_prec_by_group)
 # Print nice table
 gt(summary_table_prec) %>% 
   fmt_number(columns = "Obs", use_seps = TRUE, decimals = 0) %>% 
-  fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
+  fmt_number(columns = c(3,4,5,6), decimals = 3) %>% 
   tab_options(table.width = pct(80)) %>% 
-  tab_header(title = "Total Precipitation") %>% 
-  gtsave("table_precipitations.png")
+  tab_header(title = "Total Precipitation (m)")
+  #gtsave("table_precipitations.png")
 ```
+
+
+Replication Peri (2019), Table 2: Net Migration in Rural Locations and Changes in Temperatures
+
+
+```{r}
+library(ggplot2)
+library(scattermore)
+library(dplyr)
+
+# Subset rural data
+rural_cells <- df_long %>% filter(urban == 1)
+
+# Compute slope manually per gdp_quartile
+coefs <- rural_cells %>%
+  group_by(gdp_quartile) %>%
+  summarise(
+    slope = coef(lm(migration ~ diff_from_avg_temp))[2],
+    intercept = coef(lm(migration ~ diff_from_avg_temp))[1],
+    .groups = "drop"
+  )
+
+# Create regression lines for plotting
+reg_lines <- rural_cells %>%
+  group_by(gdp_quartile) %>%
+  summarise(
+    min_x = min(diff_from_avg_temp, na.rm = TRUE),
+    max_x = max(diff_from_avg_temp, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(coefs, by = "gdp_quartile") %>%
+  rowwise() %>%
+  do({
+    data.frame(
+      gdp_quartile = .$gdp_quartile,
+      x = seq(.$min_x, .$max_x, length.out = 100),
+      y = .$intercept + .$slope * seq(.$min_x, .$max_x, length.out = 100)
+    )
+  }) %>%
+  ungroup()
+
+# Create labels for slope annotations
+labels <- coefs %>%
+  mutate(label = paste0("Slope: ", round(slope, 3)))
+
+# Plot
+ggplot(rural_cells, aes(x = diff_from_avg_temp, y = migration)) +
+  geom_scattermore(pointsize = 1, alpha = 0.1) +
+  geom_line(data = reg_lines, aes(x = x, y = y), color = "red", inherit.aes = FALSE) +
+  geom_text(
+    data = labels,
+    aes(x = Inf, y = Inf, label = label),
+    hjust = 1.1, vjust = 1.5,
+    inherit.aes = FALSE
+  ) +
+  facet_grid(. ~ gdp_quartile) +
+  theme_minimal() +
+  labs(
+    title = "Migration vs. Temperature Deviation in Rural Areas",
+    x = "Temperature Deviation from Average (°C)",
+    y = "Net Migration per 1,000 People"
+  )
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(scattermore)
+
+# Subset urban data
+urban_cells <- df_long %>% filter(urban == 4)
+
+# Compute slope manually per gdp_quartile
+coefs <- urban_cells %>%
+  group_by(gdp_quartile) %>%
+  summarise(
+    slope = coef(lm(migration ~ diff_from_avg_temp))[2],
+    intercept = coef(lm(migration ~ diff_from_avg_temp))[1],
+    .groups = "drop"
+  )
+
+# Create regression lines for plotting
+reg_lines <- urban_cells %>%
+  group_by(gdp_quartile) %>%
+  summarise(
+    min_x = min(diff_from_avg_temp, na.rm = TRUE),
+    max_x = max(diff_from_avg_temp, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(coefs, by = "gdp_quartile") %>%
+  rowwise() %>%
+  do({
+    data.frame(
+      gdp_quartile = .$gdp_quartile,
+      x = seq(.$min_x, .$max_x, length.out = 100),
+      y = .$intercept + .$slope * seq(.$min_x, .$max_x, length.out = 100)
+    )
+  }) %>%
+  ungroup()
+
+# Create labels for slope annotations
+labels <- coefs %>%
+  mutate(label = paste0("Slope: ", round(slope, 3)))
+
+# Plot
+ggplot(urban_cells, aes(x = diff_from_avg_temp, y = migration)) +
+  geom_scattermore(pointsize = 1, alpha = 0.1) +
+  geom_line(data = reg_lines, aes(x = x, y = y), color = "red", inherit.aes = FALSE) +
+  geom_text(
+    data = labels,
+    aes(x = Inf, y = Inf, label = label),
+    hjust = 1.1, vjust = 1.5,
+    inherit.aes = FALSE
+  ) +
+  facet_grid(. ~ gdp_quartile) +
+  theme_minimal() +
+  labs(
+    title = "Migration vs. Temperature Deviation in Urban Areas",
+    x = "Temperature Deviation from Average (°C)",
+    y = "Net Migration per 1,000 People"
+  )
+```
+
+
