@@ -114,8 +114,6 @@ df <- merge(df_2000, df_2019, by = c("x", "y"), suffixes = c("_2000", "_2019"))
 df <- merge(df, df_avg, by = c("x", "y"))
 colnames(df) <- c("x", "y", "temp_2000", "temp_2019", "avg_temp")
 df$temp_diff <- df$temp_2019 - df$avg_temp # Temp. diff. between last year and long run avg
-df$x <- round(df$x, 1)
-df$y <- round(df$y, 1)
 
 write.csv(df, "temperature_summary.csv", row.names = FALSE)
 ```
@@ -200,29 +198,6 @@ ggplot() +
   ggtitle("Histogram for Temperature Difference 2019-Avg")
 ```
 
-
-```{r}
-library(patchwork)
-
-# Compute common limits
-temp_min <- min(df$temp_2000, df$temp_2019, na.rm = TRUE)
-temp_max <- max(df$temp_2000, df$temp_2019, na.rm = TRUE)
-
-p1 <- ggplot() + 
-  geom_raster(data = df, mapping = aes(x = x, y = y, fill = temp_2000)) +
-  coord_fixed() +
-  scale_fill_viridis_c(name = "°C", limits = c(temp_min, temp_max)) +
-  ggtitle("Avg Temp 2000")
-
-p2 <- ggplot() + 
-  geom_raster(data = df, mapping = aes(x = x, y = y, fill = temp_2019)) +
-  coord_fixed() +
-  scale_fill_viridis_c(name = "°C", limits = c(temp_min, temp_max)) +
-  ggtitle("Avg Temp 2019")
-
-p1 + p2 + plot_layout(ncol = 1)
-```
-
 Distribution of temperature in 2000 vs. 2019. The 2019 distribution is clearly shifted to the right, indicating generally higher temperatures compared to 2000. However, since these are single-year snapshots, they may reflect anomalous conditions and should be interpreted with caution.
 
 ```{r}
@@ -270,15 +245,17 @@ dt_long <- melt(
   variable.name = "year",
   value.name = "temp"
 )
-```
 
+# Remove NAs
+dt_long <- dt_long[!is.na(dt_long$temp),]
+```
 
 2) SPATIAL MERGE
 
 ```{r}
 library(FNN)
 
-gdp <- read.csv("../data/income-gdp-quarter.csv")
+gdp <- read.csv("income-gdp-quarter.csv")
 
 # Extract coordinates for temp
 temp_coords <- as.matrix(dt_long[, .(x, y)])

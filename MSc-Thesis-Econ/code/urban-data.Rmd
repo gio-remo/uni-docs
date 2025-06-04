@@ -104,7 +104,7 @@ library(terra)
 # Load the income raster stack
 income_stack <- rast("income-gdp-stack.tif")
 
-# Convert income raster to points (this defines our target locations)
+# Convert income raster to points
 income_points <- as.points(income_stack, na.rm = TRUE)
 
 # Extract urban values at income point locations
@@ -116,11 +116,14 @@ urban_values <- extract(downscaled, income_points, method = "simple")
 df_merged <- as.data.frame(income_points, geom = "XY")
 df_merged$urban <- urban_values[,2]
 
+# Clean
 df_merged <- df_merged[!is.na(df_merged$urban),]
 df_merged <- df_merged[df_merged$urban > 0,]
 
 # Reorder cols
 df_merged <- df_merged[,c(3,4,1,2,5)]
+
+table(df_merged$gdp_quartile)
 ```
 
 ASSIGN COUNTRY CODE
@@ -163,6 +166,8 @@ if(sum(na_mask) > 0) {
   # Assign closest country code
   df_merged$country_code[na_mask] <- world$iso_a3_eh[nn_idx]
 }
+
+table(df_merged$country_code)
 ```
 
 SUMMMARY STATISTICS
@@ -193,31 +198,6 @@ ggplot(urban_summary, aes(x = urban, y = share, fill = urban)) +
 ```
 
 ```{r}
-library(dplyr)
-library(ggplot2)
-
-# Define labels for urban classes
-urban_labels <- c("Rural", "Semi-Rural", "Semi-Urban", "Urban")
-
-# Calculate mean GDP per urban class
-gdp_by_urban <- df_merged %>%
-  group_by(urban) %>%
-  summarise(mean_gdp = mean(mean_gdp, na.rm = TRUE)) %>%
-  mutate(urban = factor(urban, levels = 1:4, labels = urban_labels))
-
-# Plot
-ggplot(gdp_by_urban, aes(x = urban, y = mean_gdp, fill = urban)) +
-  geom_col() +
-  labs(
-    title = "Mean GDP by Urban Class",
-    x = NULL,
-    y = "Mean GDP"
-  ) +
-  theme_minimal()
-```
-
-
-```{r}
-write.csv(df, "urban-income.csv", row.names = FALSE)
+write.csv(df_merged, "urban-income.csv", row.names = FALSE)
 ```
 

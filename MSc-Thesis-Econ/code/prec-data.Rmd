@@ -114,8 +114,6 @@ df <- merge(df_2000, df_2019, by = c("x", "y"), suffixes = c("_2000", "_2019"))
 df <- merge(df, df_avg, by = c("x", "y"))
 colnames(df) <- c("x", "y", "tp_2000", "tp_2019", "avg_tp")
 df$prec_diff <- df$tp_2019 - df$avg_tp
-df$x <- round(df$x, 1)
-df$y <- round(df$y, 1)
 
 write.csv(df, "total_precipitation_summary.csv", row.names = FALSE)
 ```

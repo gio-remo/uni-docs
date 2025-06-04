@@ -21,7 +21,7 @@ Let's import the dataset produced by Niva (2023):
 - Yearly 2000-2019 (20 years)
 - High-resolution, 5 arc-min / 0.083° https://www.inchcalculator.com/convert/degree-to-arcminute/
 
-**RESAMPLING**! Climate data have resolution of 6 arcmin (0.1°). Therefore I need to resample migration data from 5 arcmin (0.083°) to 6 arcmin! 
+**RESAMPLING**! Climate data have resolution of 6 arcmin (0.1°). Therefore I need to resample migration data from 5 arcmin (0.083°) to 6 arcmin.
 
 ```{r}
 library(terra)
@@ -36,6 +36,12 @@ r_original <- rast(filepath_raster_netMgr_2000_2019_annual)
 r_original # 2160 * 4320 * 20 years
 ```
 
+Original data:
+
+- 2160 × 4320 = ~9.3 million cells per layer
+- 7 million NAs per layer = ~75% of cells are NA (oceans/water)
+- ~2.3 million valid cells per layer
+
 **RESAMPLING!**
 
 ```{r}
@@ -43,125 +49,13 @@ r_original # 2160 * 4320 * 20 years
 r_template <- rast(ext(r_original), resolution = 0.1, crs = crs(r_original))
 
 # Resample to 0.1°
-r_resampled <- resample(r_original, r_template, method = "bilinear")
+r_resampled <- resample(r_original, r_template, method = "average")
 
 # Convert to data.frame
 df_netMgr_2000_2019_annual <- as.data.frame(r_resampled, xy = TRUE, na.rm = TRUE)
 ```
 
-ORIGINAL raster
-
-```{r}
-ext(r_original)
-```
-
-```{r}
-res(r_original)
-```
-
-RESAMPLED raster
-
-```{r}
-ext(r_resampled)
-```
-
-```{r}
-res(r_resampled)
-```
-
-Now we can start working on the dataset.
-
-```{r}
-# From wide (22 columns) to long
-df_netMgr_2000_2019_annual_long <- pivot_longer(df_netMgr_2000_2019_annual, -c(x, y), names_to = "layer", values_to = "value") # 31.375.980 obs
-colnames(df_netMgr_2000_2019_annual_long) <- c("x", "y", "year", "netmgr")
-
-summary(df_netMgr_2000_2019_annual_long$netmgr)
-```
-
-```{r}
-df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr == 0, ]
-```
-
-
-Many cells (4.2 mln) have value 0. This would imply that natural birth and death rate perfectly match. Leaving these 0 in the dataset alters the analysis, and as a perfect match of the demographic rates seems rather a residual case (total observations: 31 mln).
-
-I've decided to remove the observations with value 0. Here I plot these observations, they mostly cover Greenland.
-
-```{r}
-# Zeros
-df_zeros <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr == 0,] # Length 6,7mln observations
-
-avg_zeros <- df_zeros %>%
-  group_by(x, y) %>%
-  summarise(m = mean(netmgr, na.rm = TRUE))
-
-ggplot() +
-  geom_tile(data = avg_zeros, aes(x, y), fill = "red") +
-  coord_fixed()
-```
-
-Therefore, let's remove observations with 0.
-
-```{r}
-# Remove 0s
-df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr != 0,] # From 45mln to 38 mln observation
-
-summary(df_netMgr_2000_2019_annual_long$netmgr)
-```
-
-
-Let's proceed cleaning our dataset, it's time for outliers. I remove outliers at 0.01 and 0.99 percentiles.
-
-```{r}
-p <- quantile(df_netMgr_2000_2019_annual_long$netmgr, probs = c(0.01, 0.99))
-
-# Filter out outliers (1st, 99th percentile)
-df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[
-  df_netMgr_2000_2019_annual_long$netmgr >= p[1] &
-  df_netMgr_2000_2019_annual_long$netmgr <= p[2], ] # From 38mln to 37mln
-
-summary(df_netMgr_2000_2019_annual_long$netmgr)
-```
-
-
-Our Net-Migration dataset is ready. Let's plot the distribution.
-
-Most observations have values very close to 0. For instance, a value of 0.02, considering values are the ratio between net migration and 1,000 people, means that for every 1,000 residents, there was a net gain of only 0.02 people, equivalent to just 2 individuals per 100,000 people. Instead, a value of 1 means that for every 1,000 residents, there was a net gain of 1 person.
-
-These are RATIOs. In a region with a population of 100,000:
-- A value of 0.2 would imply a net migration of 20 people (0.2/1000 * 100k)
-- A value of 1 would imply a net migration of 100 people (1/1000 * 100k)
-
-```{r}
-pp <- quantile(df_netMgr_2000_2019_annual_long$netmgr, probs = c(0.25, 0.5, 0.75))
-
-ggplot(data = df_netMgr_2000_2019_annual_long, aes(netmgr)) +
-  geom_histogram(binwidth = 0.01) +
-  xlim(-3.5, 2.5) +
-    geom_vline(xintercept = pp[1], color="red", alpha=0.5, linetype="dotted") +
-  geom_vline(xintercept = pp[2], color="red", alpha=0.5, linetype="dotted") +
-  geom_vline(xintercept = pp[3], color="red", alpha=0.5, linetype="dotted") +
-  annotate("text", x = pp[1], y = 10000, label = "25th", vjust = -2, color = "red") +
-  annotate("text", x = pp[2], y = 10000, label = "50th", vjust = -2, color = "red") +
-  annotate("text", x = pp[3], y = 10000, label = "75th", vjust = -2, color = "red")
-```
-
-
-Single observations (cell, year) with POSITIVE Net-Migration = 12 mln
-
-```{r}
-df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr > 0, ]
-```
-
-Single observations (cell, year) with NEGATIVE Net-Migration = 13 mln
-
-```{r}
-df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr < 0, ]
-```
-
-
-### Merge with Income
+### Merge with Income-Urban
 
 It's time to merge Income and Net-Migration data.
 
@@ -169,25 +63,180 @@ It's time to merge Income and Net-Migration data.
 
 2. After RESAMPLING, both datasets have the same resolution: 0.1° / 6 arc-min https://www.inchcalculator.com/convert/degree-to-arcminute/
 
-Let's plot them together.
+```{r}
+library(FNN)
+library(geosphere)  # for accurate geographic distances
+
+income_urban <- read.csv("urban-income.csv")
+
+# Extract coordinates
+coords1 <- as.matrix(df_netMgr_2000_2019_annual[, c("x", "y")])
+coords2 <- as.matrix(income_urban[, c("x", "y")])
+
+# Nearest neighbor indices
+nn_result <- get.knnx(coords2, coords1, k = 1)
+nn_idx <- nn_result$nn.index
+nn_dist <- nn_result$nn.dist
+
+# Distances in meters using geodesic method
+distances <- distGeo(coords1, coords2[nn_idx, ])
+
+# Combine results
+df_merged <- cbind(
+  df_netMgr_2000_2019_annual,
+  income_urban[nn_idx, ],
+  distance_m = distances
+)
+
+# Optional: Filter to max distance
+df_merged <- df_merged[df_merged$distance_m <= 5000, ]
+df_merged <- df_merged[, !duplicated(names(df_merged))]
+df_merged$distance_m <- NULL
+```
+
+### Merge with Temperature
 
 ```{r}
-# Import clean version of income data
-gdp <- read.csv("../data/income-gdp-quarter.csv")
+temperature <- read.csv("temperature_summary.csv")
 
+# Extract coordinates
+coords1 <- as.matrix(df_merged[, c("x", "y")])
+coords2 <- as.matrix(temperature[, c("x", "y")])
+
+# Nearest neighbor indices
+nn_result <- get.knnx(coords2, coords1, k = 1)
+nn_idx <- nn_result$nn.index
+nn_dist <- nn_result$nn.dist
+
+# Distances in meters using geodesic method
+distances <- distGeo(coords1, coords2[nn_idx, ])
+
+# Combine results
+df_merged_temp <- cbind(
+  df_merged,
+  temperature[nn_idx, ],
+  distance_m = nn_dist
+)
+
+# Optional: Filter to max distance
+df_merged_temp <- df_merged_temp[df_merged_temp$distance_m <= .5, ]
+df_merged_temp <- df_merged_temp[, !duplicated(names(df_merged_temp))]
+df_merged_temp$distance_m <- NULL
+
+ggplot(df_merged_temp) +
+  geom_raster(aes(x = x, y = y, fill = avg_temp)) +
+  coord_fixed() +
+  scale_fill_viridis_c()
+```
+
+### Merge with Precipitation
+
+```{r}
+precipitation <- read.csv("total_precipitation_summary.csv")
+
+# Extract coordinates
+coords1 <- as.matrix(df_merged_temp[, c("x", "y")])
+coords2 <- as.matrix(precipitation[, c("x", "y")])
+
+# Nearest neighbor indices
+nn_result <- get.knnx(coords2, coords1, k = 1)
+nn_idx <- nn_result$nn.index
+nn_dist <- nn_result$nn.dist
+
+# Distances in meters using geodesic method
+distances <- distGeo(coords1, coords2[nn_idx, ])
+
+# Combine results
+df_merged_final <- cbind(
+  df_merged_temp,
+  precipitation[nn_idx, ],
+  distance_m = nn_dist
+)
+
+# Optional: Filter to max distance
+df_merged_final <- df_merged_final[df_merged_final$distance_m <= .5, ]
+df_merged_final <- df_merged_final[, !duplicated(names(df_merged_final))]
+df_merged_final$distance_m <- NULL
+
+ggplot(df_merged_final) +
+  geom_raster(aes(x = x, y = y, fill = avg_tp)) +
+  coord_fixed() +
+  scale_fill_viridis_c()
+```
+
+Now we can start working on the dataset.
+
+```{r}
+years <- as.character(2000:2019)
+
+df_netMgr_2000_2019_annual_long <- df_merged_final %>%
+  pivot_longer(
+    cols = all_of(years),      # only pivot year columns
+    names_to = "year",
+    values_to = "netmgr"
+  ) # 28 mln obs
+
+summary(df_netMgr_2000_2019_annual_long$netmgr)
+```
+
+NAs/0 values to remove
+
+```{r}
+df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr == 0, ] # 2,7 mln obs
+```
+
+```{r}
+zeros_by_location <- df_netMgr_2000_2019_annual_long %>%
+  filter(year == 2000 & netmgr == 0) # 130k obs
+
+ggplot(zeros_by_location, aes(x = x, y = y, fill = "red")) +
+  geom_raster() +
+  labs(
+    title = "Spatial Distribution of Zero Net Migration Areas",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  coord_fixed()
+```
+
+Therefore, let's remove observations with 0.
+
+```{r}
+# Remove 0s
+df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr != 0,] # 25mln obs
+
+summary(df_netMgr_2000_2019_annual_long$netmgr)
+```
+
+Let's proceed cleaning our dataset, it's time for outliers. I remove outliers at 0.005 and 0.995 percentiles.
+
+```{r}
+p <- quantile(df_netMgr_2000_2019_annual_long$netmgr, probs = c(0.005, 0.995))
+
+# Filter out outliers (1st, 99th percentile)
+df_netMgr_2000_2019_annual_long <- df_netMgr_2000_2019_annual_long[
+  df_netMgr_2000_2019_annual_long$netmgr >= p[1] &
+  df_netMgr_2000_2019_annual_long$netmgr <= p[2], ] # From 25,2mln to 24,9mln obs
+
+summary(df_netMgr_2000_2019_annual_long$netmgr)
+```
+
+Let's plot them together INCOME and MIGRATION
+
+```{r}
 # Net-Migration data for 1 year, to be able to plot
-netmgr_1y <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$year == 2000,]
+netmgr_1y <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$year == 2000,] # 1,2mln obs
 
 library(patchwork)
 
-p1 <- ggplot() +
-  geom_raster(data = gdp, aes(x = x, y = y, fill = mean_gdp)) +
+p1 <- ggplot(netmgr_1y) +
+  geom_raster(aes(x = x, y = y, fill = mean_gdp)) +
   coord_fixed() +
   scale_fill_viridis_c(name = "GDP per capita")
 
 
-p2 <- ggplot() + 
-  geom_raster(data = netmgr_1y, aes(x = x, y = y, fill = netmgr)) +
+p2 <- ggplot(netmgr_1y) + 
+  geom_raster(aes(x = x, y = y, fill = netmgr)) +
   coord_fixed() +
   scale_fill_viridis_b(name = "Net-Migr/1000pp", limits = c(-50, 50), breaks = seq(-50, 50, 25))
 
@@ -207,11 +256,10 @@ First, let's subset our global dataset and select a small area, north-east Italy
 
 ```{r}
 # Subset the area of interest
-gdp_subset <- filter_continent(gdp, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
 netmgr_subset <- filter_continent(df_netMgr_2000_2019_annual_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
 
 p3 <- ggplot() +
-  geom_tile(data = gdp_subset, aes(x = x, y = y, fill = mean_gdp)) +
+  geom_tile(data = netmgr_subset, aes(x = x, y = y, fill = mean_gdp)) +
   coord_fixed() +
   scale_fill_viridis_c(name = "Avg GDP", option = "magma", alpha = 1)
 
@@ -223,212 +271,176 @@ p4 <- ggplot() +
 p3 + p4 + plot_layout(ncol = 1)
 ```
 
-Let's overlap the grid of the two areas. They perfectly match! We can now merge the variables of the two datasets. 
+### Merge with Population
 
-```{r}
-library(ggnewscale) # Library to have multiple legends/scales
-
-ggplot() +
-  # 1st layer: avg GDP
-  geom_tile(data = gdp_subset, aes(x = x, y = y), fill = "white", alpha = 0, color="black", size = 1) +
-  coord_fixed() +
-  scale_fill_viridis_c(name = "Avg GDP", option = "magma") +
-  
-  new_scale_fill() + # New scale layer
-  
-  # 2nd layer: Net-Migration/1000pp
-  geom_tile(data = netmgr_subset, aes(x = x, y = y), fill = "white", alpha = 0, color = "red", size = 0.1) +
-  coord_fixed() +
-  scale_fill_viridis_c(name = "Net-Migration/1000pp", option = "viridis") +
-  
-  # Legends position
-  theme(
-    legend.position = "bottom",  # Place both legends below
-    legend.box = "horizontal"
-  )
-```
-
-Spatial join with FNN library: https://rdrr.io/cran/FNN/man/get.knn.html
-
-```{r}
+```{r, eval=FALSE}
 # Fast Nearest Neighbor
 library(FNN)
 
-# Extract coordinates
-netmgr_coords <- as.matrix(df_netMgr_2000_2019_annual_long[, c("x", "y")])
-gdp_coords <- as.matrix(gdp[, c("x", "y")])
+# Import Population
+population <- read.csv("../data/population-2000-2019-01deg.csv")
 
-# Find nearest neighbor indices
-nn_idx <- get.knnx(gdp_coords, netmgr_coords, k = 1)$nn.index[, 1]
+# Initialize the population column
+df_netMgr_2000_2019_annual_long$population <- NA
 
-# Assign quartiles
-df_netMgr_2000_2019_annual_long$gdp_quartile <- gdp$gdp_quartile[nn_idx]
-df_netMgr_2000_2019_annual_long$mean_gdp <- gdp$mean_gdp[nn_idx]
+years <- 2000:2019
+
+# Loop through each year
+for(yr in years) {
+  message(yr)
+  
+  # Subset data for current year
+  netmgr_yr <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$year == yr, ]
+  pop_yr <- population[population$year == yr, ]
+  
+  # Extract coordinates
+  netmgr_coords <- as.matrix(netmgr_yr[, c("x", "y")])
+  pop_coords <- as.matrix(pop_yr[, c("x", "y")])
+  
+  # Find nearest neighbors
+  nn_idx <- get.knnx(pop_coords, netmgr_coords, k = 1)$nn.index[, 1]
+  
+  # Assign population values
+  df_netMgr_2000_2019_annual_long$population[df_netMgr_2000_2019_annual_long$year == yr] <- 
+    pop_yr$population[nn_idx]
+}
 ```
+
+
+Our Net-Migration dataset is ready. Let's plot the distribution.
+
+Most observations have values very close to 0. For instance, a value of 0.02, considering values are the ratio between net migration and 1,000 people, means that for every 1,000 residents, there was a net gain of only 0.02 people, equivalent to just 2 individuals per 100,000 people. Instead, a value of 1 means that for every 1,000 residents, there was a net gain of 1 person.
+
+These are RATIOs. In a region with a population of 100,000:
+- A value of 0.2 would imply a net migration of 20 people (0.2/1000 * 100k)
+- A value of 1 would imply a net migration of 100 people (1/1000 * 100k)
+
 
 ```{r}
-# Subset the area of interest
-netmgr_subset1 <- filter_continent(df_netMgr_2000_2019_annual_long, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
+pp <- quantile(df_netMgr_2000_2019_annual_long$netmgr, probs = c(0.25, 0.5, 0.75))
 
-p5 <- ggplot() +
-  geom_tile(data = gdp_subset, aes(x = x, y = y, fill = gdp_quartile)) +
-  scale_fill_discrete(name = "GDP from original") +
-  coord_fixed()
-
-p6 <- ggplot() +
-  geom_tile(data = netmgr_subset1, aes(x = x, y = y, fill = gdp_quartile)) +
-  scale_fill_discrete(name = "GDP after merge") +
-  coord_fixed()
-
-p5 + p6 + plot_layout(ncol = 1)
+ggplot(data = df_netMgr_2000_2019_annual_long, aes(netmgr)) +
+  geom_histogram(binwidth = 0.01) +
+  xlim(-4, 4) +
+    geom_vline(xintercept = pp[1], color="red", alpha=0.5, linetype="dotted") +
+  geom_vline(xintercept = pp[2], color="red", alpha=0.5, linetype="dotted") +
+  geom_vline(xintercept = pp[3], color="red", alpha=0.5, linetype="dotted") +
+  annotate("text", x = pp[1], y = 10000, label = "25th", vjust = -2, color = "red") +
+  annotate("text", x = pp[2], y = 10000, label = "50th", vjust = -2, color = "red") +
+  annotate("text", x = pp[3], y = 10000, label = "75th", vjust = -2, color = "red")
 ```
 
+
+Single observations (cell, year) with POSITIVE Net-Migration = 12 mln
+
+```{r}
+df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr > 0, ]
+```
+
+Single observations (cell, year) with NEGATIVE Net-Migration = 12,9 mln
+
+```{r}
+df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$netmgr < 0, ]
+```
+
+
+# Table
+
 Fancy table with gt: https://gt.rstudio.com/index.html
+
+TABLE BY INCOME QUARTERS FOR NET-MIGRATION
 
 ```{r}
 library(gt)
 
 # Summary Statistics
 summary_stats <- function(data, variable) {
-  q <- quantile(data[[deparse(substitute(variable))]], probs = c(0.25, 0.75), na.rm = TRUE)
   data %>%
     summarize(
-      Obs. = n(),
+      Obs = sum(!is.na({{ variable }})),
       Mean = mean({{ variable }}, na.rm = TRUE),
       `St. dev.` = sd({{ variable }}, na.rm = TRUE),
-      `25th` = q[1],
-      `75th` = q[2]
+      `25th` = quantile({{ variable }}, 0.25, na.rm = TRUE),
+      `75th` = quantile({{ variable }}, 0.75, na.rm = TRUE)
     )
 }
 
-# Summary for full sample
+# For full sample: make Group character explicitly
 summary_migr_full_sample <- summary_stats(df_netMgr_2000_2019_annual_long, netmgr) %>%
   mutate(Group = "Full sample")
 
-# Summary by GDP group
+# For group summaries: convert Group to character after rename
 summary_migr_by_group <- df_netMgr_2000_2019_annual_long %>%
   group_by(gdp_quartile) %>%
-  # Apply function to each group
-  group_modify(~summary_stats(.x, netmgr)) %>%
-  rename(Group = gdp_quartile)
+  group_modify(~ summary_stats(.x, netmgr)) %>%
+  rename(Group = gdp_quartile) %>%
+  mutate(Group = as.character(Group))  # <-- important
 
-# Combine in one table
+# Now bind_rows will work without error
 summary_table_migr <- bind_rows(summary_migr_full_sample, summary_migr_by_group) %>%
-  select(Group, Obs., Mean, `St. dev.`, `25th`, `75th`)
+  select(Group, Obs, Mean, `St. dev.`, `25th`, `75th`)
 
 # Print nice table
 gt(summary_table_migr) %>% 
-  fmt_number(columns = "Obs.", use_seps = TRUE, decimals = 0) %>% 
+  fmt_number(columns = "Obs", use_seps = TRUE, decimals = 0) %>% 
   fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
   tab_options(table.width = pct(80)) %>% 
-  tab_header(title = "Net migration rates")
+  tab_header(title = "Net migration rates") %>% 
+  gtsave("table_netmigration.png")
 ```
 
-
-### Merge with Temperature
-
-```{r}
-# Import clean version of Temp data
-temp <- read.csv("temperature_summary.csv")
-
-temp_subset <- filter_continent(temp, lon_min = 10, lon_max = 15, lat_min = 44, lat_max = 49)
-
-p7 <- ggplot() +
-  geom_tile(data = temp_subset, aes(x = x, y = y, fill = avg_temp)) +
-  coord_fixed() +
-  scale_fill_viridis_c(name = "Avg Temp", option = "viridis")
-
-p3 + p7 + plot_layout(ncol = 1)
-```
+TABLE BY INCOME QUARTERS FOR TEMPERATURE
 
 ```{r}
-# Merge with FNN
+one_year <- df_netMgr_2000_2019_annual_long[df_netMgr_2000_2019_annual_long$year == 2000, ]
 
-# Extract coordinates
-temp_coords <- as.matrix(temp[, c("x", "y")])
-
-# Find nearest neighbor indices GDP-TEMP
-nn_idx_gdp_temp <- get.knnx(temp_coords, gdp_coords, k = 1)$nn.index[, 1]
-
-# Assign
-cross <- gdp
-cross$avg_temp <- temp$avg_temp[nn_idx_gdp_temp]
-cross$temp_diff <- temp$temp_diff[nn_idx_gdp_temp]
-```
-
-```{r}
-# Summary for full sample
-summary_temp_full_sample <- summary_stats(cross, avg_temp) %>%
+# For full sample: make Group character explicitly
+summary_temp_full_sample <- summary_stats(one_year, avg_temp) %>%
   mutate(Group = "Full sample")
 
-# Summary by GDP group
-summary_temp_by_group <- cross %>%
+# For group summaries: convert Group to character after rename
+summary_temp_by_group <- one_year %>%
   group_by(gdp_quartile) %>%
-  # Apply function to each group
-  group_modify(~summary_stats(.x, avg_temp)) %>%
-  rename(Group = gdp_quartile)
+  group_modify(~ summary_stats(.x, avg_temp)) %>%
+  rename(Group = gdp_quartile) %>%
+  mutate(Group = as.character(Group))  # <-- important
 
-# Combine in one table
+# Now bind_rows will work without error
 summary_table_temp <- bind_rows(summary_temp_full_sample, summary_temp_by_group) %>%
-  select(Group, Obs., Mean, `St. dev.`, `25th`, `75th`)
+  select(Group, Obs, Mean, `St. dev.`, `25th`, `75th`)
 
-# Print table
+# Print nice table
 gt(summary_table_temp) %>% 
-  fmt_number(columns = "Obs.", use_seps = TRUE, decimals = 0) %>% 
+  fmt_number(columns = "Obs", use_seps = TRUE, decimals = 0) %>% 
   fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
   tab_options(table.width = pct(80)) %>% 
-  tab_header(title = "Long-run average temperatures (°C)")
+  tab_header(title = "Temperature") %>% 
+  gtsave("table_temperature.png")
 ```
 
-```{r}
-df_avg_netmgr <- df_netMgr_2000_2019_annual_long %>%
-  group_by(x, y, gdp_quartile) %>%
-  summarise(netmgr_avg = mean(netmgr, na.rm = TRUE), .groups = "drop")
-```
+TABLE BY INCOME QUARTERS FOR PRECIPITATIONS
 
 ```{r}
-temp <- read.csv("temperature_summary.csv")
+# For full sample: make Group character explicitly
+summary_prec_full_sample <- summary_stats(one_year, avg_tp) %>%
+  mutate(Group = "Full sample")
 
-# Merge with FNN
+# For group summaries: convert Group to character after rename
+summary_prec_by_group <- one_year %>%
+  group_by(gdp_quartile) %>%
+  group_modify(~ summary_stats(.x, avg_tp)) %>%
+  rename(Group = gdp_quartile) %>%
+  mutate(Group = as.character(Group))  # <-- important
 
-# Extract coordinates
-temp_coords <- as.matrix(temp[, c("x", "y")])
-df_loong <- as.matrix(df_avg_netmgr[, c("x", "y")])
+# Now bind_rows will work without error
+summary_table_prec <- bind_rows(summary_prec_full_sample, summary_prec_by_group) %>%
+  select(Group, Obs, Mean, `St. dev.`, `25th`, `75th`)
 
-# Find nearest neighbor indices GDP-TEMP
-nn_idx_gdp_temp <- get.knnx(temp_coords, df_loong, k = 1)$nn.index[, 1]
-
-# Assign
-df_avg_netmgr$avg_temp <- temp$avg_temp[nn_idx_gdp_temp]
-df_avg_netmgr$temp_diff <- temp$temp_diff[nn_idx_gdp_temp]
-```
-
-```{r}
-subset <- df_avg_netmgr[df_avg_netmgr$gdp]
-
-ggplot(df_avg_netmgr, aes(x = temp_diff, y = netmgr_avg)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method = "lm", se = TRUE, color = "blue") +
-  facet_wrap(~ gdp_quartile) +
-  labs(
-    x = "Temperature Difference (temp_diff)",
-    y = "Average Net Migration (netmgr_avg)",
-    title = "Net Migration vs Temperature Difference by GDP Quartile"
-  ) +
-  theme_minimal()
-```
-
-```{r}
-urban <- read.csv("urban_classification.csv")
-
-# Merge with FNN
-
-# Extract coordinates
-urban_coords <- as.matrix(urban[, c("x", "y")])
-
-# Find nearest neighbor indices GDP-TEMP
-nn_idx_urban <- get.knnx(urban_coords, df_loong, k = 1)$nn.index[, 1]
-
-# Assign
-df_avg_netmgr$urban <- urban$urban[nn_idx_gdp_temp]
+# Print nice table
+gt(summary_table_prec) %>% 
+  fmt_number(columns = "Obs", use_seps = TRUE, decimals = 0) %>% 
+  fmt_number(columns = c(3,4,5,6), decimals = 2) %>% 
+  tab_options(table.width = pct(80)) %>% 
+  tab_header(title = "Total Precipitation") %>% 
+  gtsave("table_precipitations.png")
 ```
